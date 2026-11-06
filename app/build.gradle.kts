@@ -14,7 +14,7 @@ android {
         versionName = "1.1"
     }
     splits {
-        abi { isEnable = true; reset(); include("arm64-v8a", "armeabi-v7a", "x86_64", "x86"); isUniversalApk = false }
+        abi { isEnable = true; reset(); include(*((project.findProperty("ABI_FILTERS") as? String)?.split(";")?.toTypedArray() ?: arrayOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")) ); isUniversalApk = false }
     }
     buildTypes {
         release {
