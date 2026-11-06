@@ -471,8 +471,9 @@ private fun ONTunnelScreen(
                         items(servers, key = { it.serialize() }) { entry ->
                             val active = selectedKey == entry.serialize()
                             // Locked (subscription) servers: name only, no IP/port
-                            val detail = if (entry.locked) "" else remember(entry.configB64) {
-                                try {
+                            val detail = remember(entry.configB64, entry.locked) {
+                                if (entry.locked) ""
+                                else try {
                                     extractProtocolInfo(String(Base64.decode(entry.configB64, Base64.DEFAULT)))
                                 } catch (_: Exception) { "" }
                             }
