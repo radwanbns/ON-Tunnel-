@@ -10,8 +10,8 @@ android {
         applicationId = "com.ontunnel.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 5
+        versionName = "1.4"
     }
     splits {
         abi { isEnable = true; reset(); include(*((project.findProperty("ABI_FILTERS") as? String)?.split(";")?.toTypedArray() ?: arrayOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")) ); isUniversalApk = false }
@@ -19,6 +19,13 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+        debug {
+            // CI builds the debug variant, so classes.dex is obfuscated/shrunk there too.
+            isMinifyEnabled = true
+            isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
