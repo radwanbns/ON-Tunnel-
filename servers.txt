@@ -1,2 +1,1 @@
 vless://293e65e6-d3e9-11f1-8655-fb20545f23ec@104.18.37.127:443?path=%2Fvpnjantit&security=tls&encryption=none&host=ca2.ratech.qzz.io&type=ws&sni=ca2.ratech.qzz.io#IAM ☆6 🇨🇦 (1)
-vless://4f9e6e42-d4b2-11f1-a742-73e439c9d2ce@104.18.37.127:443?path=%2Fvpnjantit&security=tls&encryption=none&host=cl1.ratech.qzz.io&type=ws&allowInsecure=0&sni=cl1.ratech.qzz.io#IAM ☆6 🇭🇷 (2)
