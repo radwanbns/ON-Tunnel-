@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Base64
 import androidx.core.app.NotificationCompat
+import java.security.SecureRandom
 import go.Seq
 import libv2ray.CoreCallbackHandler
 import libv2ray.CoreController
@@ -46,20 +47,7 @@ class ONTunnelVpnService : VpnService() {
             }
             tun = builder.establish() ?: error("Failed to create VPN interface")
             Seq.setContext(applicationContext)
-
-            // Xray expects BaseKey as Base64 encoding of exactly 32 raw bytes.
-            // Generate it here to avoid copied or line-wrapped Base64 literals.
-            val xudpKeyBytes = "ON-Tunnel-XUDP-Key-32-Bytes-Only".toByteArray(Charsets.UTF_8)
-            check(xudpKeyBytes.size == 32) {
-                "Internal XUDP key must be exactly 32 bytes (was ${xudpKeyBytes.size})"
-            }
-            val xudpBaseKey = Base64.encodeToString(xudpKeyBytes, Base64.NO_WRAP)
-            val decodedKey = Base64.decode(xudpBaseKey, Base64.DEFAULT)
-            check(decodedKey.size == 32) {
-                "Internal XUDP BaseKey must decode to 32 bytes (was ${decodedKey.size})"
-            }
-            Libv2ray.initCoreEnv(filesDir.absolutePath, xudpBaseKey)
-
+            Libv2ray.initCoreEnv(filesDir.absolutePath, xudpBaseKey())
             val callback = object : CoreCallbackHandler {
                 override fun startup(): Long = 0
                 override fun shutdown(): Long = 0
@@ -67,6 +55,7 @@ class ONTunnelVpnService : VpnService() {
             }
             core = Libv2ray.newCoreController(callback)
             core!!.startLoop(config, tun!!.fd.toLong().toInt())
+            running = true
             sendBroadcast(
                 Intent(ACTION_STATE).setPackage(packageName).putExtra(EXTRA_STATE, "connected")
             )
@@ -82,7 +71,28 @@ class ONTunnelVpnService : VpnService() {
         }
     }
 
+    /**
+     * Xray requires the XUDP base key to be a 32-byte value encoded with
+     * URL-safe Base64 WITHOUT padding (43 characters). Anything else makes the core
+     * fail with "BaseKey must be 32 bytes". The key is generated once and persisted.
+     */
+    private fun xudpBaseKey(): String {
+        val prefs = getSharedPreferences("on_tunnel_core", MODE_PRIVATE)
+        val flags = Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP
+        prefs.getString("xudp_key", null)?.let { saved ->
+            try {
+                if (Base64.decode(saved, flags).size == 32 && !saved.contains("=")) return saved
+            } catch (_: Exception) {
+            }
+        }
+        val bytes = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        val key = Base64.encodeToString(bytes, flags)
+        prefs.edit().putString("xudp_key", key).apply()
+        return key
+    }
+
     private fun stopCore() {
+        running = false
         try {
             core?.stopLoop()
         } catch (_: Exception) {
@@ -122,7 +132,7 @@ class ONTunnelVpnService : VpnService() {
             )
         }
         return NotificationCompat.Builder(this, channel)
-            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setSmallIcon(R.drawable.ic_stat_vpn)
             .setContentTitle("ON Tunnel")
             .setContentText("VPN connection is active")
             .setOngoing(true)
@@ -137,5 +147,8 @@ class ONTunnelVpnService : VpnService() {
         const val EXTRA_STATE = "state"
         const val EXTRA_ERROR = "error"
         const val NOTIFICATION_ID = 7001
+
+        @Volatile
+        var running: Boolean = false
     }
 }
