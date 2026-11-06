@@ -15,6 +15,14 @@ object V2RayConfigParser {
         if (raw.startsWith("{")) {
             val json = JSONObject(raw)
             require(json.has("outbounds")) { "ملف JSON لا يحتوي outbounds" }
+            val inbounds = json.optJSONArray("inbounds") ?: JSONArray().also { json.put("inbounds", it) }
+            val hasTun = (0 until inbounds.length()).any { inbounds.optJSONObject(it)?.optString("protocol") == "tun" }
+            if (!hasTun) {
+                val tun = JSONObject().put("tag", "tun").put("protocol", "tun")
+                    .put("settings", JSONObject().put("name", "ontun0").put("MTU", 1500).put("userLevel", 8))
+                    .put("sniffing", JSONObject().put("enabled", true).put("destOverride", JSONArray().put("http").put("tls").put("quic")))
+                inbounds.put(tun)
+            }
             return Parsed(json.optString("remarks").ifBlank { "Custom JSON" }, json.toString())
         }
         if (raw.startsWith("vmess://", true)) return vmess(raw)
