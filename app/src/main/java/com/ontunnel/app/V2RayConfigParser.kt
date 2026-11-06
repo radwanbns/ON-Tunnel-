@@ -11,10 +11,10 @@ object V2RayConfigParser {
 
     fun parse(rawInput: String): Parsed {
         val raw = rawInput.trim()
-        require(raw.isNotEmpty()) { "أدخل رابط V2Ray أو JSON" }
+        require(raw.isNotEmpty()) { "Enter a V2Ray link or JSON" }
         if (raw.startsWith("{")) {
             val json = JSONObject(raw)
-            require(json.has("outbounds")) { "ملف JSON لا يحتوي outbounds" }
+            require(json.has("outbounds")) { "JSON does not contain outbounds" }
             val inbounds = json.optJSONArray("inbounds") ?: JSONArray().also { json.put("inbounds", it) }
             val hasTun = (0 until inbounds.length()).any { inbounds.optJSONObject(it)?.optString("protocol") == "tun" }
             if (!hasTun) {
@@ -30,7 +30,7 @@ object V2RayConfigParser {
         return when (uri.scheme?.lowercase()) {
             "vless" -> vless(uri)
             "trojan" -> trojan(uri)
-            else -> error("الصيغ المدعومة: VLESS وVMess وTrojan وJSON")
+            else -> error("Supported formats: VLESS, VMess, Trojan and JSON")
         }
     }
 
@@ -53,7 +53,7 @@ object V2RayConfigParser {
     }
 
     private fun vless(u: URI): Parsed {
-        val host = u.host ?: error("عنوان الخادم غير صحيح")
+        val host = u.host ?: error("Invalid server address")
         val q = params(u.rawQuery)
         val net = q["type"].orEmpty().ifBlank { "tcp" }.lowercase()
         val sec = q["security"].orEmpty().ifBlank { "none" }.lowercase()
@@ -64,7 +64,7 @@ object V2RayConfigParser {
         if (net == "ws") stream.put("wsSettings", JSONObject().put("path", q["path"] ?: "/").put("headers", JSONObject().put("Host", q["host"] ?: host)))
         if (net == "grpc") stream.put("grpcSettings", JSONObject().put("serviceName", q["serviceName"] ?: q["path"] ?: "").put("multiMode", q["mode"] == "multi"))
         if (net == "httpupgrade") stream.put("httpupgradeSettings", JSONObject().put("path", q["path"] ?: "/").put("host", q["host"] ?: host))
-        val user = JSONObject().put("id", u.userInfo?.substringBefore(':') ?: error("UUID غير موجود")).put("encryption", q["encryption"] ?: "none")
+        val user = JSONObject().put("id", u.userInfo?.substringBefore(':') ?: error("UUID missing")).put("encryption", q["encryption"] ?: "none")
         q["flow"]?.takeIf { it.isNotBlank() }?.let { user.put("flow", it) }
         val out = JSONObject().put("tag", "proxy").put("protocol", "vless")
             .put("settings", JSONObject().put("vnext", JSONArray().put(JSONObject().put("address", host).put("port", if (u.port > 0) u.port else 443).put("users", JSONArray().put(user)))))
@@ -73,14 +73,14 @@ object V2RayConfigParser {
     }
 
     private fun trojan(u: URI): Parsed {
-        val host = u.host ?: error("عنوان الخادم غير صحيح")
+        val host = u.host ?: error("Invalid server address")
         val q = params(u.rawQuery)
         val net = q["type"].orEmpty().ifBlank { "tcp" }.lowercase()
         val stream = JSONObject().put("network", net).put("security", "tls")
             .put("tlsSettings", JSONObject().put("serverName", q["sni"] ?: q["host"] ?: host).put("allowInsecure", false))
         if (net == "ws") stream.put("wsSettings", JSONObject().put("path", q["path"] ?: "/").put("headers", JSONObject().put("Host", q["host"] ?: host)))
         if (net == "grpc") stream.put("grpcSettings", JSONObject().put("serviceName", q["serviceName"] ?: q["path"] ?: ""))
-        val password = u.userInfo ?: error("كلمة مرور Trojan غير موجودة")
+        val password = u.userInfo ?: error("Trojan password missing")
         val out = JSONObject().put("tag", "proxy").put("protocol", "trojan")
             .put("settings", JSONObject().put("servers", JSONArray().put(JSONObject().put("address", host).put("port", if (u.port > 0) u.port else 443).put("password", password))))
             .put("streamSettings", stream)
@@ -102,6 +102,14 @@ object V2RayConfigParser {
         val p = it.split("=", limit = 2)
         if (p.isEmpty()) null else decode(p[0]) to decode(p.getOrElse(1) { "" })
     }.toMap()
-    private fun decode(s: String?): String = try { URLDecoder.decode(s.orEmpty(), "UTF-8") } catch (_: Exception) { s.orEmpty() }
-    private fun array(s: String?): JSONArray = JSONArray().also { a -> s.orEmpty().split(",").filter { it.isNotBlank() }.forEach(a::put) }
+
+    private fun decode(s: String?): String = try {
+        URLDecoder.decode(s.orEmpty(), "UTF-8")
+    } catch (_: Exception) {
+        s.orEmpty()
+    }
+
+    private fun array(s: String?): JSONArray = JSONArray().also { a ->
+        s.orEmpty().split(",").filter { it.isNotBlank() }.forEach(a::put)
+    }
 }
