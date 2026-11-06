@@ -10,8 +10,8 @@ android {
         applicationId = "com.ontunnel.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.4"
+        versionCode = 6
+        versionName = "1.5"
     }
     splits {
         abi { isEnable = true; reset(); include(*((project.findProperty("ABI_FILTERS") as? String)?.split(";")?.toTypedArray() ?: arrayOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")) ); isUniversalApk = false }
