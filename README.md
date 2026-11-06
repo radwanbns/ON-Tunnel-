@@ -33,6 +33,11 @@ private const val SUBSCRIPTION_URL = "https://example.com/your-subscription-link
 
 Replace with your real subscription link. While it still contains `example.com` the auto-update is skipped.
 
+## UI changes in 1.5
+
+- App icon replaced with the same shield glyph shown in the connected-state notification (`ic_launcher.xml`), so the launcher icon and the VPN notification icon now match.
+- Removed the standalone **Update Servers** button from the home screen. The home screen now shows only the connect button and the server list; refreshing the subscription is done from the menu ⋮ → **Check update** (also still runs automatically once on launch).
+
 ## Hardening in 1.4
 
 - The subscription and Telegram URLs are no longer plain strings in the dex – see `SecureStrings.kt` (XOR-obfuscated, decoded only at runtime).
