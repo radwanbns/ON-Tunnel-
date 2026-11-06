@@ -1,1 +1,6 @@
 # ON Tunnel release rules
+
+-keep class libv2ray.** { *; }
+-keep class go.** { *; }
+-dontwarn libv2ray.**
+-dontwarn go.**
