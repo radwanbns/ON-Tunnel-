@@ -22,7 +22,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -46,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -56,8 +59,9 @@ import java.net.URL
  * Hardcoded subscription URL – NEVER shown in the UI.
  * Content: one VLESS / VMess / Trojan link per line, or the whole file base64-encoded.
  */
-private const val SUBSCRIPTION_URL = "https://raw.githubusercontent.com/radwanbns/ON-Tunnel-/refs/heads/main/servers.txt"
-private const val TELEGRAM_URL = "https://t.me/radouane_tech"
+// Real values are XOR-encrypted in SecureStrings.kt – never stored as plain strings.
+private val SUBSCRIPTION_URL: String get() = SecureStrings.subscriptionUrl
+private val TELEGRAM_URL: String get() = SecureStrings.telegramUrl
 
 internal enum class VpnStatus { Disconnected, Connecting, Connected, Disconnecting }
 
@@ -86,8 +90,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var tamperDetected by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        tamperDetected = IntegrityGuard.status(this) == IntegrityGuard.Status.MISMATCH
         ContextCompat.registerReceiver(
             this, stateReceiver, IntentFilter(ONTunnelVpnService.ACTION_STATE),
             ContextCompat.RECEIVER_NOT_EXPORTED
@@ -101,6 +108,7 @@ class MainActivity : ComponentActivity() {
             ONTunnelApp(
                 status = status,
                 error = errorMessage,
+                tampered = tamperDetected,
                 onDismissError = { errorMessage = null },
                 onConnect = ::connect,
                 onDisconnect = ::disconnect
@@ -149,6 +157,7 @@ private class EditorTarget(val entry: ServerEntry?, val profile: ServerProfile)
 internal fun ONTunnelApp(
     status: VpnStatus,
     error: String?,
+    tampered: Boolean,
     onDismissError: () -> Unit,
     onConnect: (String) -> Unit,
     onDisconnect: () -> Unit
@@ -168,6 +177,18 @@ internal fun ONTunnelApp(
     var confirmDeleteAll by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<EditorTarget?>(null) }
     var jsonEditing by remember { mutableStateOf<ServerEntry?>(null) }
+
+    var themeMode by remember { mutableStateOf(store.themeMode) }
+    val systemDark = isSystemInDarkTheme()
+    val dark = when (themeMode) { "light" -> false; "dark" -> true; else -> systemDark }
+    Pal.dark = dark
+    SideEffect {
+        (context as? Activity)?.window?.let { w ->
+            val c = WindowCompat.getInsetsController(w, w.decorView)
+            c.isAppearanceLightStatusBars = !dark
+            c.isAppearanceLightNavigationBars = !dark
+        }
+    }
 
     fun message(text: String) { scope.launch { snackbar.showSnackbar(text) } }
 
@@ -249,6 +270,7 @@ internal fun ONTunnelApp(
     }
 
     fun toggleConnect() {
+        if (tampered) { message("App integrity check failed – connection disabled"); return }
         if (status == VpnStatus.Connected) { onDisconnect(); return }
         val sel = servers.firstOrNull { it.id == selectedId }
         if (sel == null) message("Please select a server first") else onConnect(sel.config)
@@ -258,7 +280,7 @@ internal fun ONTunnelApp(
         runUpdate(auto = true)
     }
 
-    MaterialTheme(colorScheme = AppColors) {
+    MaterialTheme(colorScheme = appColorScheme(dark)) {
         Surface(color = Bg, modifier = Modifier.fillMaxSize()) {
             val target = editing
             if (target != null) {
@@ -291,6 +313,27 @@ internal fun ONTunnelApp(
                                 Box {
                                     IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "Menu") }
                                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                        DropdownMenuItem(
+                                            text = { Text("Check update") },
+                                            leadingIcon = { Icon(Icons.Default.Refresh, null) },
+                                            onClick = { menuOpen = false; runUpdate(auto = false) }
+                                        )
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    when (themeMode) {
+                                                        "light" -> "Theme: Light"
+                                                        "dark" -> "Theme: Dark"
+                                                        else -> "Theme: Auto"
+                                                    }
+                                                )
+                                            },
+                                            leadingIcon = { Icon(Icons.Default.BrightnessMedium, null) },
+                                            onClick = {
+                                                themeMode = when (themeMode) { "system" -> "light"; "light" -> "dark"; else -> "system" }
+                                                store.themeMode = themeMode
+                                            }
+                                        )
                                         DropdownMenuItem(
                                             text = { Text("Add server") },
                                             leadingIcon = { Icon(Icons.Default.Add, null) },
@@ -329,7 +372,7 @@ internal fun ONTunnelApp(
                     LazyColumn(
                         Modifier.fillMaxSize().padding(padding),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         item {
                             ConnectHero(
@@ -337,6 +380,9 @@ internal fun ONTunnelApp(
                                 serverName = servers.firstOrNull { it.id == selectedId }?.name,
                                 onClick = ::toggleConnect
                             )
+                        }
+                        if (tampered) {
+                            item { ErrorCard("App signature does not match the official build – connection disabled for your safety.", {}) }
                         }
                         if (error != null) {
                             item { ErrorCard(error, onDismissError) }
@@ -527,7 +573,7 @@ private fun ConnectHero(status: VpnStatus, serverName: String?, onClick: () -> U
                     .clickable(enabled = !busy, onClick = onClick),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.PowerSettingsNew, contentDescription = "Connect", tint = Color(0xFF06101F), modifier = Modifier.size(56.dp))
+                Icon(Icons.Default.PowerSettingsNew, contentDescription = "Connect", tint = OnHero, modifier = Modifier.size(56.dp))
             }
             if (busy) CircularProgressIndicator(Modifier.size(150.dp), color = color, strokeWidth = 3.dp)
         }
@@ -566,41 +612,37 @@ private fun ServerCard(
     onDelete: () -> Unit
 ) {
     var menu by remember { mutableStateOf(false) }
-    val detail = remember(entry.config, entry.locked) {
-        if (entry.locked) "Subscription server" else extractProtocolInfo(entry.config)
-    }
     Card(
         onClick = onSelect,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = if (selected) SurfaceHigh else SurfaceC),
-        border = if (selected) BorderStroke(1.5.dp, Accent) else null,
+        border = if (selected) BorderStroke(1.dp, Accent) else BorderStroke(1.dp, TextMuted.copy(alpha = 0.18f)),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+            Modifier.fillMaxWidth().padding(start = 12.dp, end = 2.dp, top = 2.dp, bottom = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            RadioButton(
-                selected = selected, onClick = onSelect,
-                colors = RadioButtonDefaults.colors(selectedColor = Accent, unselectedColor = TextMuted)
-            )
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (entry.locked) {
-                        Icon(Icons.Default.Lock, "Locked", tint = TextMuted, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(6.dp))
-                    }
-                    Text(
-                        entry.name, color = TextMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis
-                    )
-                }
-                if (detail.isNotBlank()) {
-                    Text(detail, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
+            Box(
+                Modifier.size(18.dp).clip(CircleShape)
+                    .border(2.dp, if (selected) Accent else TextMuted.copy(alpha = 0.5f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                if (selected) Box(Modifier.size(8.dp).clip(CircleShape).background(Accent))
             }
+            Spacer(Modifier.width(12.dp))
+            if (entry.locked) {
+                Icon(Icons.Default.Lock, "Locked", tint = TextMuted, modifier = Modifier.size(13.dp))
+                Spacer(Modifier.width(6.dp))
+            }
+            Text(
+                entry.name, color = TextMain, fontSize = 15.sp, fontWeight = FontWeight.Medium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+            )
             Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Options", tint = TextMuted) }
+                IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.MoreVert, "Options", tint = TextMuted, modifier = Modifier.size(20.dp))
+                }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     if (!entry.locked) {
                         DropdownMenuItem(
@@ -710,30 +752,3 @@ private fun tryDecodeSubscription(body: String): String {
     }
     return body
 }
-
-private fun extractProtocolInfo(json: String): String = try {
-    val obj = org.json.JSONObject(json)
-    val outbounds = obj.optJSONArray("outbounds")
-    val proxy = outbounds?.let { arr ->
-        (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
-            .firstOrNull { it.optString("tag") == "proxy" || it.optString("protocol") in listOf("vless", "vmess", "trojan") }
-    }
-    if (proxy == null) "Custom JSON" else {
-        val protocol = proxy.optString("protocol").uppercase()
-        val stream = proxy.optJSONObject("streamSettings")
-        val network = stream?.optString("network").orEmpty().ifBlank { "tcp" }
-        val security = stream?.optString("security").orEmpty().ifBlank { "none" }
-        val settings = proxy.optJSONObject("settings")
-        val node = settings?.optJSONArray("vnext")?.optJSONObject(0) ?: settings?.optJSONArray("servers")?.optJSONObject(0)
-        val address = node?.optString("address").orEmpty()
-        val port = node?.optInt("port") ?: 0
-        buildString {
-            append(protocol).append(" • ").append(network)
-            if (security != "none") append(" • ").append(security)
-            if (address.isNotBlank()) {
-                append(" • ").append(address)
-                if (port > 0) append(":").append(port)
-            }
-        }
-    }
-} catch (_: Exception) { "" }

@@ -39,6 +39,11 @@ class ServerStore(context: Context) {
         get() = prefs.getString("selected_id", "") ?: ""
         set(v) { prefs.edit().putString("selected_id", v).apply() }
 
+    /** "system" | "light" | "dark" */
+    var themeMode: String
+        get() = prefs.getString("theme_mode", "system") ?: "system"
+        set(v) { prefs.edit().putString("theme_mode", v).apply() }
+
     fun load(): List<ServerEntry> {
         prefs.getString("servers_v2", null)?.let { json ->
             return try {
