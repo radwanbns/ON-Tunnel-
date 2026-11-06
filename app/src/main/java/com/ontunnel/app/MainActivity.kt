@@ -76,7 +76,7 @@ private val RedDelete = Color(0xFFE53935)
  * Example raw GitHub:
  *   https://raw.githubusercontent.com/USER/REPO/main/servers.txt
  */
-private const val SUBSCRIPTION_URL = "https://example.com/your-subscription-link"
+private const val SUBSCRIPTION_URL = "https://raw.githubusercontent.com/radwanbns/ON-Tunnel-/refs/heads/main/servers.txt"
 
 /**
  * Server entry stored as: name | base64(configJson) | originalUri | locked
