@@ -53,8 +53,7 @@ private fun ONTunnelScreen() {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    Text("OT", color = Cyan, fontSize = 30.sp, fontWeight = FontWeight.Black)
-                    Text("  ON Tunnel", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    Text("ON Tunnel", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.height(34.dp))
                 Text("الوقت المتبقي", color = Color.LightGray, fontSize = 15.sp)
