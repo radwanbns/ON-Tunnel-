@@ -7,6 +7,7 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.util.Base64
 import androidx.core.app.NotificationCompat
 import go.Seq
 import libv2ray.CoreCallbackHandler
@@ -45,12 +46,20 @@ class ONTunnelVpnService : VpnService() {
             }
             tun = builder.establish() ?: error("Failed to create VPN interface")
             Seq.setContext(applicationContext)
-            // The core expects BaseKey as Base64 encoding of exactly 32 raw bytes.
-            // Passing 32 ASCII characters directly is decoded as 24 bytes and fails XUDP validation.
-            Libv2ray.initCoreEnv(
-                filesDir.absolutePath,
-                "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
-            )
+
+            // Xray expects BaseKey as Base64 encoding of exactly 32 raw bytes.
+            // Generate it here to avoid copied or line-wrapped Base64 literals.
+            val xudpKeyBytes = "ON-Tunnel-XUDP-Key-32-Bytes-Only".toByteArray(Charsets.UTF_8)
+            check(xudpKeyBytes.size == 32) {
+                "Internal XUDP key must be exactly 32 bytes (was ${xudpKeyBytes.size})"
+            }
+            val xudpBaseKey = Base64.encodeToString(xudpKeyBytes, Base64.NO_WRAP)
+            val decodedKey = Base64.decode(xudpBaseKey, Base64.DEFAULT)
+            check(decodedKey.size == 32) {
+                "Internal XUDP BaseKey must decode to 32 bytes (was ${decodedKey.size})"
+            }
+            Libv2ray.initCoreEnv(filesDir.absolutePath, xudpBaseKey)
+
             val callback = object : CoreCallbackHandler {
                 override fun startup(): Long = 0
                 override fun shutdown(): Long = 0
