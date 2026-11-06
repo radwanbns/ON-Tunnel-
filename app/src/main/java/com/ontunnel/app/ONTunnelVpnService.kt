@@ -45,7 +45,7 @@ class ONTunnelVpnService : VpnService() {
             }
             tun = builder.establish() ?: error("Failed to create VPN interface")
             Seq.setContext(applicationContext)
-            Libv2ray.initCoreEnv(filesDir.absolutePath, "on-tunnel")
+            Libv2ray.initCoreEnv(filesDir.absolutePath, "01234567890123456789012345678901")
             val callback = object : CoreCallbackHandler {
                 override fun startup(): Long = 0
                 override fun shutdown(): Long = 0
