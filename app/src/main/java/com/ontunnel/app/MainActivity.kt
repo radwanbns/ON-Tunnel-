@@ -2,6 +2,8 @@ package com.ontunnel.app
 
 import android.app.Activity
 import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -20,7 +22,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
@@ -33,11 +39,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -46,11 +54,11 @@ import java.net.HttpURLConnection
 import java.net.URL
 import android.util.Base64
 
-// ─── Colors matching the Xray Tunnel screenshot (light theme) ───────────────
-private val Bg = Color(0xFFFFF5F8)           // soft pinkish white
-private val CardBg = Color(0xFFF0F0F0)       // status card gray
-private val ServerCard = Color(0xFFEDE7F6)   // soft purple server card
-private val BlueBtn = Color(0xFF1976D2)      // update button blue
+// ─── Colors (light theme like Xray Tunnel screenshot) ───────────────────────
+private val Bg = Color(0xFFFFF5F8)
+private val CardBg = Color(0xFFF0F0F0)
+private val ServerCard = Color(0xFFEDE7F6)
+private val BlueBtn = Color(0xFF1976D2)
 private val AccentPurple = Color(0xFF7E57C2)
 private val TextDark = Color(0xFF212121)
 private val TextMuted = Color(0xFF757575)
@@ -59,9 +67,40 @@ private val RedDelete = Color(0xFFE53935)
 
 /**
  * Hardcoded subscription URL – NEVER shown in the UI.
- * Replace this with your real subscription link.
+ *
+ * Expected content (GitHub raw or any URL):
+ *   - One VLESS / VMess / Trojan link per line
+ *   - OR the whole file base64-encoded (standard subscription format)
+ *
+ * Example raw GitHub:
+ *   https://raw.githubusercontent.com/USER/REPO/main/servers.txt
  */
-private const val SUBSCRIPTION_URL = "https://raw.githubusercontent.com/radwanbns/ON-Tunnel-/refs/heads/main/servers.txt"
+private const val SUBSCRIPTION_URL = "https://example.com/your-subscription-link"
+
+/**
+ * Server entry stored as: name | base64(configJson) | originalUri | locked
+ * locked=1 → from subscription: show name only (no IP/port), lock icon
+ */
+private data class ServerEntry(
+    val name: String,
+    val configB64: String,
+    val originalUri: String = "",
+    val locked: Boolean = false
+) {
+    fun serialize(): String = "$name|$configB64|$originalUri|${if (locked) "1" else "0"}"
+    companion object {
+        fun parse(raw: String): ServerEntry? {
+            val parts = raw.split("|", limit = 4)
+            if (parts.size < 2 || parts[1].isBlank()) return null
+            return ServerEntry(
+                name = parts[0].ifBlank { "Server" },
+                configB64 = parts[1],
+                originalUri = parts.getOrElse(2) { "" },
+                locked = parts.getOrElse(3) { "0" } == "1"
+            )
+        }
+    }
+}
 
 class MainActivity : ComponentActivity() {
     private var pendingConfig: String? = null
@@ -91,6 +130,7 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(stateReceiver, filter, RECEIVER_NOT_EXPORTED)
         } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
             registerReceiver(stateReceiver, filter)
         }
         setContent {
@@ -138,29 +178,48 @@ private fun ONTunnelScreen(
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("on_tunnel_servers", Context.MODE_PRIVATE) }
     val scope = rememberCoroutineScope()
-
-    var servers by remember {
-        mutableStateOf(prefs.getStringSet("items", emptySet())?.toList() ?: emptyList())
-    }
-    var selected by remember { mutableStateOf(prefs.getString("selected", "") ?: "") }
-    var isUpdating by remember { mutableStateOf(false) }
-    var autoUpdateDone by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Silent auto-update on launch
+    var servers by remember {
+        mutableStateOf(
+            prefs.getStringSet("items", emptySet())
+                ?.mapNotNull { ServerEntry.parse(it) }
+                ?: emptyList()
+        )
+    }
+    var selectedKey by remember { mutableStateOf(prefs.getString("selected", "") ?: "") }
+    var isUpdating by remember { mutableStateOf(false) }
+    var autoUpdateDone by remember { mutableStateOf(false) }
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var addInput by remember { mutableStateOf("") }
+    var exportDialogEntry by remember { mutableStateOf<ServerEntry?>(null) }
+
+    fun saveServers(list: List<ServerEntry>) {
+        servers = list
+        prefs.edit().putStringSet("items", list.map { it.serialize() }.toSet()).apply()
+    }
+
+    fun selectServer(entry: ServerEntry) {
+        selectedKey = entry.serialize()
+        prefs.edit().putString("selected", selectedKey).apply()
+    }
+
+    val selectedEntry = servers.firstOrNull { it.serialize() == selectedKey }
+
+    // Auto-update on launch
     LaunchedEffect(Unit) {
-        if (!autoUpdateDone && SUBSCRIPTION_URL.isNotBlank() && !SUBSCRIPTION_URL.contains("example.com")) {
+        if (!autoUpdateDone && isSubscriptionConfigured()) {
             autoUpdateDone = true
             isUpdating = true
             val result = withContext(Dispatchers.IO) { fetchAndParseSubscription(SUBSCRIPTION_URL) }
             isUpdating = false
             result.onSuccess { newEntries ->
-                val oldCount = servers.size
-                val merged = (servers + newEntries).distinctBy { it.substringBefore("|") }
-                val added = merged.size - oldCount
+                val oldNames = servers.map { it.name }.toSet()
+                val merged = (servers + newEntries).distinctBy { it.name }
+                val added = merged.count { it.name !in oldNames }
                 if (added > 0) {
-                    servers = merged
-                    prefs.edit().putStringSet("items", merged.toSet()).apply()
+                    saveServers(merged)
                     snackbarHostState.showSnackbar("Updated successfully – $added new server(s) added")
                     Toast.makeText(context, "Updated successfully – $added new server(s)", Toast.LENGTH_SHORT).show()
                 }
@@ -170,8 +229,8 @@ private fun ONTunnelScreen(
 
     fun updateSubscription() {
         if (isUpdating) return
-        if (SUBSCRIPTION_URL.isBlank() || SUBSCRIPTION_URL.contains("example.com")) {
-            scope.launch { snackbarHostState.showSnackbar("Subscription URL not configured") }
+        if (!isSubscriptionConfigured()) {
+            scope.launch { snackbarHostState.showSnackbar("Subscription URL not configured in code") }
             return
         }
         scope.launch {
@@ -179,22 +238,61 @@ private fun ONTunnelScreen(
             val result = withContext(Dispatchers.IO) { fetchAndParseSubscription(SUBSCRIPTION_URL) }
             isUpdating = false
             result.onSuccess { newEntries ->
-                val oldCount = servers.size
-                val merged = (servers + newEntries).distinctBy { it.substringBefore("|") }
-                val added = merged.size - oldCount
-                servers = merged
-                prefs.edit().putStringSet("items", merged.toSet()).apply()
+                val oldNames = servers.map { it.name }.toSet()
+                val merged = (servers + newEntries).distinctBy { it.name }
+                val added = merged.count { it.name !in oldNames }
+                saveServers(merged)
                 if (added > 0) {
                     snackbarHostState.showSnackbar("Updated successfully – $added new server(s) added")
                     Toast.makeText(context, "Updated successfully – $added new server(s)", Toast.LENGTH_SHORT).show()
                 } else {
-                    snackbarHostState.showSnackbar("Already up to date")
+                    snackbarHostState.showSnackbar("Already up to date (${newEntries.size} servers in subscription)")
                     Toast.makeText(context, "Already up to date", Toast.LENGTH_SHORT).show()
                 }
             }.onFailure { e ->
                 snackbarHostState.showSnackbar("Update failed: ${e.message}")
+                Toast.makeText(context, "Update failed: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    fun importFromClipboard() {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val text = clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()?.trim().orEmpty()
+        if (text.isBlank()) {
+            scope.launch { snackbarHostState.showSnackbar("Clipboard is empty") }
+            return
+        }
+        // Support multiple links (one per line) or a single link/JSON
+        val lines = if (text.startsWith("{")) listOf(text) else text.lines().map { it.trim() }.filter { it.isNotBlank() }
+        var added = 0
+        val newList = servers.toMutableList()
+        for (line in lines) {
+            try {
+                val parsed = V2RayConfigParser.parse(line)
+                val b64 = Base64.encodeToString(parsed.config.toByteArray(), Base64.NO_WRAP)
+                val uri = if (line.startsWith("{")) "" else line
+                val entry = ServerEntry(parsed.name, b64, uri)
+                if (newList.none { it.name == entry.name }) {
+                    newList += entry
+                    added++
+                }
+            } catch (_: Exception) { /* skip invalid */ }
+        }
+        if (added > 0) {
+            saveServers(newList)
+            if (selectedKey.isBlank() && newList.isNotEmpty()) selectServer(newList.last())
+            scope.launch { snackbarHostState.showSnackbar("Imported $added server(s) from clipboard") }
+            Toast.makeText(context, "Imported $added server(s)", Toast.LENGTH_SHORT).show()
+        } else {
+            scope.launch { snackbarHostState.showSnackbar("No valid servers found in clipboard") }
+        }
+    }
+
+    fun copyToClipboard(label: String, text: String) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
+        Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
     }
 
     MaterialTheme {
@@ -207,12 +305,12 @@ private fun ONTunnelScreen(
                         if (connected) {
                             onDisconnect()
                         } else {
-                            val encoded = selected.substringAfter("|", "")
-                            if (encoded.isBlank()) {
+                            val entry = selectedEntry
+                            if (entry == null) {
                                 scope.launch { snackbarHostState.showSnackbar("Please select a server first") }
                             } else {
                                 try {
-                                    onConnect(String(Base64.decode(encoded, Base64.DEFAULT)))
+                                    onConnect(String(Base64.decode(entry.configB64, Base64.DEFAULT)))
                                 } catch (_: Exception) {
                                     scope.launch { snackbarHostState.showSnackbar("Failed to read server config") }
                                 }
@@ -245,15 +343,47 @@ private fun ONTunnelScreen(
                     .padding(padding)
                     .padding(horizontal = 16.dp)
             ) {
-                // ── Top App Bar ───────────────────────────────────────────
+                // ── Top bar ───────────────────────────────────────────────
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp, bottom = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { /* menu placeholder */ }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Menu", tint = TextDark)
+                    Box {
+                        IconButton(onClick = { menuExpanded = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Menu", tint = TextDark)
+                        }
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Add server manually") },
+                                onClick = {
+                                    menuExpanded = false
+                                    addInput = ""
+                                    showAddDialog = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Import from clipboard") },
+                                onClick = {
+                                    menuExpanded = false
+                                    importFromClipboard()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete all servers") },
+                                onClick = {
+                                    menuExpanded = false
+                                    saveServers(emptyList())
+                                    selectedKey = ""
+                                    prefs.edit().remove("selected").apply()
+                                    scope.launch { snackbarHostState.showSnackbar("All servers deleted") }
+                                }
+                            )
+                        }
                     }
                     Spacer(Modifier.weight(1f))
                     Text(
@@ -264,7 +394,7 @@ private fun ONTunnelScreen(
                     )
                 }
 
-                // ── Status Card ───────────────────────────────────────────
+                // ── Status card ───────────────────────────────────────────
                 Column(
                     Modifier
                         .fillMaxWidth()
@@ -289,7 +419,6 @@ private fun ONTunnelScreen(
 
                     Spacer(Modifier.height(16.dp))
 
-                    // Update Servers button (same position as screenshot)
                     Button(
                         onClick = { updateSubscription() },
                         enabled = !isUpdating,
@@ -312,11 +441,7 @@ private fun ONTunnelScreen(
                             Spacer(Modifier.width(10.dp))
                             Text("Updating...", fontSize = 15.sp, fontWeight = FontWeight.Medium)
                         } else {
-                            Icon(
-                                Icons.Default.Refresh,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp)
-                            )
+                            Icon(Icons.Default.Refresh, null, Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
                             Text("Update Servers", fontSize = 15.sp, fontWeight = FontWeight.Medium)
                         }
@@ -328,13 +453,11 @@ private fun ONTunnelScreen(
                 // ── Server list ───────────────────────────────────────────
                 if (servers.isEmpty()) {
                     Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
+                        Modifier.fillMaxWidth().weight(1f),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "No servers yet.\nTap Update Servers to fetch them.",
+                            "No servers yet.\nTap Update Servers or use the menu ⋮",
                             color = TextMuted,
                             fontSize = 14.sp,
                             textAlign = TextAlign.Center
@@ -345,114 +468,304 @@ private fun ONTunnelScreen(
                         Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        items(servers, key = { it }) { item ->
-                            val name = item.substringBefore("|")
-                            val active = selected == item
-                            val detail = remember(item) {
+                        items(servers, key = { it.serialize() }) { entry ->
+                            val active = selectedKey == entry.serialize()
+                            // Locked (subscription) servers: name only, no IP/port
+                            val detail = if (entry.locked) "" else remember(entry.configB64) {
                                 try {
-                                    val cfg = String(Base64.decode(item.substringAfter("|"), Base64.DEFAULT))
-                                    extractProtocolInfo(cfg)
-                                } catch (_: Exception) {
-                                    ""
-                                }
+                                    extractProtocolInfo(String(Base64.decode(entry.configB64, Base64.DEFAULT)))
+                                } catch (_: Exception) { "" }
                             }
 
-                            Row(
+                            Column(
                                 Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(14.dp))
                                     .background(ServerCard)
-                                    .clickable {
-                                        selected = item
-                                        prefs.edit().putString("selected", item).apply()
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .clickable { selectServer(entry) }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
                             ) {
-                                // Delete button
-                                IconButton(
-                                    onClick = {
-                                        servers = servers - item
-                                        prefs.edit().putStringSet("items", servers.toSet()).apply()
-                                        if (selected == item) {
-                                            selected = ""
-                                            prefs.edit().remove("selected").apply()
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(
+                                        onClick = {
+                                            val newList = servers - entry
+                                            saveServers(newList)
+                                            if (selectedKey == entry.serialize()) {
+                                                selectedKey = ""
+                                                prefs.edit().remove("selected").apply()
+                                            }
+                                        },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(Icons.Default.Delete, "Delete", tint = RedDelete, modifier = Modifier.size(20.dp))
+                                    }
+
+                                    Spacer(Modifier.width(4.dp))
+
+                                    Column(Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (entry.locked) {
+                                                Icon(
+                                                    Icons.Default.Lock,
+                                                    contentDescription = "Locked",
+                                                    tint = TextMuted,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(Modifier.width(6.dp))
+                                            }
+                                            Text(
+                                                entry.name,
+                                                color = TextDark,
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
                                         }
-                                    },
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Delete,
-                                        contentDescription = "Delete",
-                                        tint = RedDelete,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
+                                        if (detail.isNotBlank()) {
+                                            Spacer(Modifier.height(2.dp))
+                                            Text(detail, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
+                                    }
 
-                                Spacer(Modifier.width(4.dp))
-
-                                // Name + details
-                                Column(Modifier.weight(1f)) {
-                                    Text(
-                                        name,
-                                        color = TextDark,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    if (detail.isNotBlank()) {
-                                        Spacer(Modifier.height(2.dp))
-                                        Text(
-                                            detail,
-                                            color = TextMuted,
-                                            fontSize = 12.sp,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                    // Radio
+                                    Box(
+                                        Modifier
+                                            .size(22.dp)
+                                            .clip(CircleShape)
+                                            .border(
+                                                2.dp,
+                                                if (active) AccentPurple else TextMuted.copy(alpha = 0.4f),
+                                                CircleShape
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (active) {
+                                            Box(Modifier.size(12.dp).clip(CircleShape).background(AccentPurple))
+                                        }
                                     }
                                 }
 
-                                // Radio indicator
-                                Box(
-                                    Modifier
-                                        .size(22.dp)
-                                        .clip(CircleShape)
-                                        .border(
-                                            width = 2.dp,
-                                            color = if (active) AccentPurple else TextMuted.copy(alpha = 0.4f),
-                                            shape = CircleShape
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (active) {
-                                        Box(
-                                            Modifier
-                                                .size(12.dp)
-                                                .clip(CircleShape)
-                                                .background(AccentPurple)
-                                        )
+                                // Export URI / JSON – only for manually added (unlocked) servers
+                                if (!entry.locked) {
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                val uri = entry.originalUri
+                                                if (uri.isNotBlank()) {
+                                                    copyToClipboard("URI", uri)
+                                                } else {
+                                                    exportDialogEntry = entry
+                                                }
+                                            },
+                                            modifier = Modifier.weight(1f).height(34.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp),
+                                            shape = RoundedCornerShape(8.dp),
+                                            border = ButtonDefaults.outlinedButtonBorder.copy(
+                                                brush = androidx.compose.ui.graphics.SolidColor(AccentPurple.copy(alpha = 0.5f))
+                                            )
+                                        ) {
+                                            Icon(Icons.Default.ContentCopy, null, Modifier.size(14.dp), tint = AccentPurple)
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("URI", fontSize = 12.sp, color = AccentPurple)
+                                        }
+                                        OutlinedButton(
+                                            onClick = {
+                                                try {
+                                                    val json = String(Base64.decode(entry.configB64, Base64.DEFAULT))
+                                                    copyToClipboard("JSON", json)
+                                                } catch (_: Exception) {
+                                                    Toast.makeText(context, "Failed to export JSON", Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                            modifier = Modifier.weight(1f).height(34.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp),
+                                            shape = RoundedCornerShape(8.dp),
+                                            border = ButtonDefaults.outlinedButtonBorder.copy(
+                                                brush = androidx.compose.ui.graphics.SolidColor(AccentPurple.copy(alpha = 0.5f))
+                                            )
+                                        ) {
+                                            Icon(Icons.Default.ContentCopy, null, Modifier.size(14.dp), tint = AccentPurple)
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("JSON", fontSize = 12.sp, color = AccentPurple)
+                                        }
                                     }
                                 }
                             }
                         }
-                        item { Spacer(Modifier.height(80.dp)) } // space for FAB
+                        item { Spacer(Modifier.height(80.dp)) }
                     }
                 }
             }
         }
+
+        // ── Add server dialog ─────────────────────────────────────────────
+        if (showAddDialog) {
+            Dialog(onDismissRequest = { showAddDialog = false }) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White)
+                        .padding(20.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Add server", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = TextDark, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { showAddDialog = false }) {
+                            Icon(Icons.Default.Close, null, tint = TextMuted)
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    BasicTextField(
+                        value = addInput,
+                        onValueChange = { addInput = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 100.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFF5F5F5))
+                            .padding(12.dp),
+                        textStyle = TextStyle(color = TextDark, fontSize = 13.sp),
+                        decorationBox = { inner ->
+                            if (addInput.isEmpty()) {
+                                Text("Paste VLESS / VMess / Trojan / JSON", color = TextMuted, fontSize = 13.sp)
+                            }
+                            inner()
+                        }
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            try {
+                                val parsed = V2RayConfigParser.parse(addInput.trim())
+                                val b64 = Base64.encodeToString(parsed.config.toByteArray(), Base64.NO_WRAP)
+                                val uri = if (addInput.trim().startsWith("{")) "" else addInput.trim()
+                                val entry = ServerEntry(parsed.name, b64, uri)
+                                val newList = (servers + entry).distinctBy { it.name }
+                                saveServers(newList)
+                                selectServer(entry)
+                                showAddDialog = false
+                                Toast.makeText(context, "Server added", Toast.LENGTH_SHORT).show()
+                            } catch (e: Exception) {
+                                Toast.makeText(context, e.message ?: "Invalid configuration", Toast.LENGTH_LONG).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = BlueBtn, contentColor = Color.White)
+                    ) {
+                        Text("Add", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // Export tip when no original URI
+        if (exportDialogEntry != null) {
+            AlertDialog(
+                onDismissRequest = { exportDialogEntry = null },
+                title = { Text("Export URI") },
+                text = { Text("No original URI was stored for this server (it was imported as JSON only). Use the JSON button instead.") },
+                confirmButton = {
+                    TextButton(onClick = { exportDialogEntry = null }) { Text("OK") }
+                }
+            )
+        }
     }
 }
 
-/** Extract a short protocol summary from the Xray JSON config. */
+private fun isSubscriptionConfigured(): Boolean =
+    SUBSCRIPTION_URL.isNotBlank() &&
+        !SUBSCRIPTION_URL.contains("example.com") &&
+        (SUBSCRIPTION_URL.startsWith("http://") || SUBSCRIPTION_URL.startsWith("https://"))
+
+/**
+ * Fetch subscription.
+ * Supports:
+ *  - Plain text: one vless/vmess/trojan link per line
+ *  - Base64-encoded list of links (standard subscription format)
+ *  - GitHub raw URLs
+ */
+private fun fetchAndParseSubscription(url: String): Result<List<ServerEntry>> = runCatching {
+    val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+        connectTimeout = 20000
+        readTimeout = 20000
+        requestMethod = "GET"
+        instanceFollowRedirects = true
+        // GitHub raw is friendlier with a browser-like UA
+        setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 ONTunnel/1.1")
+        setRequestProperty("Accept", "text/plain, */*")
+    }
+    val code = conn.responseCode
+    if (code !in 200..299) {
+        val errBody = try { conn.errorStream?.bufferedReader()?.readText() } catch (_: Exception) { null }
+        error("HTTP $code${if (!errBody.isNullOrBlank()) ": ${errBody.take(120)}" else ""}")
+    }
+    val body = conn.inputStream.bufferedReader().use { it.readText() }.trim()
+    conn.disconnect()
+
+    if (body.isBlank()) error("Subscription is empty")
+
+    // Try base64 decode; if result looks like links, use it
+    val content = tryDecodeSubscription(body)
+
+    val lines = content.lines().map { it.trim() }.filter { it.isNotBlank() && !it.startsWith("#") }
+    val entries = mutableListOf<ServerEntry>()
+    val errors = mutableListOf<String>()
+    for (line in lines) {
+        try {
+            val parsed = V2RayConfigParser.parse(line)
+            val b64 = Base64.encodeToString(parsed.config.toByteArray(), Base64.NO_WRAP)
+            val uri = if (line.startsWith("{")) "" else line
+            entries += ServerEntry(parsed.name, b64, originalUri = "", locked = true)
+        } catch (e: Exception) {
+            errors += (e.message ?: "parse error")
+        }
+    }
+    if (entries.isEmpty()) {
+        val hint = when {
+            lines.isEmpty() -> "No lines found. File may be empty or wrong encoding."
+            else -> "Parsed 0/${lines.size} lines. First error: ${errors.firstOrNull() ?: "unknown"}"
+        }
+        error(hint)
+    }
+    entries
+}
+
+/** If body is base64 of a link list, decode it; otherwise return as-is. */
+private fun tryDecodeSubscription(body: String): String {
+    // Already looks like links
+    if (body.contains("://") || body.trimStart().startsWith("{")) return body
+
+    // Try standard base64
+    val attempts = listOf(
+        Base64.DEFAULT,
+        Base64.URL_SAFE or Base64.NO_WRAP,
+        Base64.DEFAULT or Base64.NO_WRAP
+    )
+    for (flag in attempts) {
+        try {
+            val decoded = String(Base64.decode(body, flag), Charsets.UTF_8).trim()
+            if (decoded.contains("://") || decoded.startsWith("{")) return decoded
+        } catch (_: Exception) { }
+    }
+    return body
+}
+
 private fun extractProtocolInfo(json: String): String {
     return try {
         val obj = org.json.JSONObject(json)
         val outbounds = obj.optJSONArray("outbounds") ?: return ""
         val proxy = (0 until outbounds.length())
             .mapNotNull { outbounds.optJSONObject(it) }
-            .firstOrNull { it.optString("tag") == "proxy" || it.optString("protocol") in listOf("vless", "vmess", "trojan") }
-            ?: return ""
+            .firstOrNull {
+                it.optString("tag") == "proxy" ||
+                    it.optString("protocol") in listOf("vless", "vmess", "trojan")
+            } ?: return ""
         val protocol = proxy.optString("protocol").uppercase()
         val stream = proxy.optJSONObject("streamSettings")
         val network = stream?.optString("network") ?: "tcp"
@@ -470,10 +783,7 @@ private fun extractProtocolInfo(json: String): String {
                 address = server?.optString("address") ?: ""
                 port = server?.optInt("port") ?: 0
             }
-            else -> {
-                address = ""
-                port = 0
-            }
+            else -> { address = ""; port = 0 }
         }
         buildString {
             append(protocol)
@@ -489,42 +799,5 @@ private fun extractProtocolInfo(json: String): String {
                 if (port > 0) append(":$port")
             }
         }
-    } catch (_: Exception) {
-        ""
-    }
-}
-
-/**
- * Fetches the subscription URL, decodes base64 if needed, splits into lines,
- * and parses each valid V2Ray link.
- */
-private fun fetchAndParseSubscription(url: String): Result<List<String>> = runCatching {
-    val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-        connectTimeout = 15000
-        readTimeout = 15000
-        requestMethod = "GET"
-        setRequestProperty("User-Agent", "ONTunnel/1.1")
-    }
-    val body = conn.inputStream.bufferedReader().use { it.readText() }.trim()
-    conn.disconnect()
-
-    val decoded = try {
-        String(Base64.decode(body, Base64.DEFAULT), Charsets.UTF_8).trim()
-    } catch (_: Exception) {
-        body
-    }
-
-    val lines = decoded.lines().map { it.trim() }.filter { it.isNotBlank() }
-    val entries = mutableListOf<String>()
-    for (line in lines) {
-        try {
-            val parsed = V2RayConfigParser.parse(line)
-            val encoded = Base64.encodeToString(parsed.config.toByteArray(), Base64.NO_WRAP)
-            entries += parsed.name + "|" + encoded
-        } catch (_: Exception) {
-            // skip invalid lines
-        }
-    }
-    if (entries.isEmpty()) error("No valid servers found in subscription")
-    entries
+    } catch (_: Exception) { "" }
 }
