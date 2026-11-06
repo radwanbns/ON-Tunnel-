@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -75,7 +76,7 @@ private val RedDelete = Color(0xFFE53935)
  * Example raw GitHub:
  *   https://raw.githubusercontent.com/USER/REPO/main/servers.txt
  */
-private const val SUBSCRIPTION_URL = "https://raw.githubusercontent.com/radwanbns/ON-Tunnel-/refs/heads/main/servers.txt"
+private const val SUBSCRIPTION_URL = "https://example.com/your-subscription-link"
 
 /**
  * Server entry stored as: name | base64(configJson) | originalUri | locked
@@ -193,6 +194,8 @@ private fun ONTunnelScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var addInput by remember { mutableStateOf("") }
     var exportDialogEntry by remember { mutableStateOf<ServerEntry?>(null) }
+    var editEntry by remember { mutableStateOf<ServerEntry?>(null) }
+    var editInput by remember { mutableStateOf("") }
 
     fun saveServers(list: List<ServerEntry>) {
         servers = list
@@ -546,13 +549,33 @@ private fun ONTunnelScreen(
                                     }
                                 }
 
-                                // Export URI / JSON – only for manually added (unlocked) servers
+                                // Export / Edit – only for manually added (unlocked) servers
                                 if (!entry.locked) {
                                     Spacer(Modifier.height(6.dp))
                                     Row(
                                         Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                editEntry = entry
+                                                editInput = entry.originalUri.ifBlank {
+                                                    try {
+                                                        String(Base64.decode(entry.configB64, Base64.DEFAULT))
+                                                    } catch (_: Exception) { "" }
+                                                }
+                                            },
+                                            modifier = Modifier.weight(1f).height(34.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp),
+                                            shape = RoundedCornerShape(8.dp),
+                                            border = ButtonDefaults.outlinedButtonBorder.copy(
+                                                brush = androidx.compose.ui.graphics.SolidColor(AccentPurple.copy(alpha = 0.5f))
+                                            )
+                                        ) {
+                                            Icon(Icons.Default.Edit, null, Modifier.size(14.dp), tint = AccentPurple)
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("Edit", fontSize = 12.sp, color = AccentPurple)
+                                        }
                                         OutlinedButton(
                                             onClick = {
                                                 val uri = entry.originalUri
@@ -659,6 +682,72 @@ private fun ONTunnelScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = BlueBtn, contentColor = Color.White)
                     ) {
                         Text("Add", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // ── Edit server dialog ────────────────────────────────────────────
+        if (editEntry != null) {
+            Dialog(onDismissRequest = { editEntry = null }) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White)
+                        .padding(20.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Edit server", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = TextDark, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { editEntry = null }) {
+                            Icon(Icons.Default.Close, null, tint = TextMuted)
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    BasicTextField(
+                        value = editInput,
+                        onValueChange = { editInput = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 100.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFF5F5F5))
+                            .padding(12.dp),
+                        textStyle = TextStyle(color = TextDark, fontSize = 13.sp),
+                        decorationBox = { inner ->
+                            if (editInput.isEmpty()) {
+                                Text("Paste VLESS / VMess / Trojan / JSON", color = TextMuted, fontSize = 13.sp)
+                            }
+                            inner()
+                        }
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            val current = editEntry ?: return@Button
+                            try {
+                                val parsed = V2RayConfigParser.parse(editInput.trim())
+                                val b64 = Base64.encodeToString(parsed.config.toByteArray(), Base64.NO_WRAP)
+                                val uri = if (editInput.trim().startsWith("{")) "" else editInput.trim()
+                                val updated = ServerEntry(parsed.name, b64, uri, locked = false)
+                                val newList = servers.map {
+                                    if (it.serialize() == current.serialize()) updated else it
+                                }
+                                saveServers(newList)
+                                if (selectedKey == current.serialize()) {
+                                    selectServer(updated)
+                                }
+                                editEntry = null
+                                Toast.makeText(context, "Server updated", Toast.LENGTH_SHORT).show()
+                            } catch (e: Exception) {
+                                Toast.makeText(context, e.message ?: "Invalid configuration", Toast.LENGTH_LONG).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = BlueBtn, contentColor = Color.White)
+                    ) {
+                        Text("Save", fontWeight = FontWeight.Bold)
                     }
                 }
             }
