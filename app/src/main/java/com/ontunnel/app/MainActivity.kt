@@ -13,16 +13,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,8 +33,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,21 +46,20 @@ import java.net.HttpURLConnection
 import java.net.URL
 import android.util.Base64
 
-// ─── Colors (v2rayNG-inspired dark theme) ───────────────────────────────────
-private val AppBg = Color(0xFF0D1117)
-private val Panel = Color(0xFF161B22)
-private val PanelSelected = Color(0xFF1F6FEB)
-private val Accent = Color(0xFF58A6FF)
-private val Green = Color(0xFF3FB950)
-private val MainText = Color(0xFFE6EDF3)
-private val Muted = Color(0xFF8B949E)
-private val Red = Color(0xFFF85149)
-private val Border = Color(0xFF30363D)
+// ─── Colors matching the Xray Tunnel screenshot (light theme) ───────────────
+private val Bg = Color(0xFFFFF5F8)           // soft pinkish white
+private val CardBg = Color(0xFFF0F0F0)       // status card gray
+private val ServerCard = Color(0xFFEDE7F6)   // soft purple server card
+private val BlueBtn = Color(0xFF1976D2)      // update button blue
+private val AccentPurple = Color(0xFF7E57C2)
+private val TextDark = Color(0xFF212121)
+private val TextMuted = Color(0xFF757575)
+private val GreenDot = Color(0xFF43A047)
+private val RedDelete = Color(0xFFE53935)
 
 /**
  * Hardcoded subscription URL – NEVER shown in the UI.
  * Replace this with your real subscription link.
- * The app fetches it silently on launch and via the refresh button.
  */
 private const val SUBSCRIPTION_URL = "https://example.com/your-subscription-link"
 
@@ -73,14 +75,8 @@ class MainActivity : ComponentActivity() {
     private val stateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.getStringExtra(ONTunnelVpnService.EXTRA_STATE)) {
-                "connected" -> {
-                    stateText = "Connected"
-                    isConnected = true
-                }
-                "disconnected" -> {
-                    stateText = "Disconnected"
-                    isConnected = false
-                }
+                "connected" -> { stateText = "Connected"; isConnected = true }
+                "disconnected" -> { stateText = "Disconnected"; isConnected = false }
                 "error" -> {
                     stateText = "Error: " + intent.getStringExtra(ONTunnelVpnService.EXTRA_ERROR).orEmpty()
                     isConnected = false
@@ -143,31 +139,20 @@ private fun ONTunnelScreen(
     val prefs = remember { context.getSharedPreferences("on_tunnel_servers", Context.MODE_PRIVATE) }
     val scope = rememberCoroutineScope()
 
-    var input by remember { mutableStateOf("") }
-    var message by remember { mutableStateOf("") }
-    var messageIsSuccess by remember { mutableStateOf(false) }
     var servers by remember {
         mutableStateOf(prefs.getStringSet("items", emptySet())?.toList() ?: emptyList())
     }
     var selected by remember { mutableStateOf(prefs.getString("selected", "") ?: "") }
     var isUpdating by remember { mutableStateOf(false) }
     var autoUpdateDone by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    val selectedName = selected.substringBefore("|").ifBlank { "No server selected" }
-    val statusColor = when {
-        connected -> Green
-        state.contains("Connecting") || state.contains("Disconnecting") -> Accent
-        else -> Muted
-    }
-
-    // Silent auto-update on first composition (app launch)
+    // Silent auto-update on launch
     LaunchedEffect(Unit) {
         if (!autoUpdateDone && SUBSCRIPTION_URL.isNotBlank() && !SUBSCRIPTION_URL.contains("example.com")) {
             autoUpdateDone = true
             isUpdating = true
-            val result = withContext(Dispatchers.IO) {
-                fetchAndParseSubscription(SUBSCRIPTION_URL)
-            }
+            val result = withContext(Dispatchers.IO) { fetchAndParseSubscription(SUBSCRIPTION_URL) }
             isUpdating = false
             result.onSuccess { newEntries ->
                 val oldCount = servers.size
@@ -176,28 +161,22 @@ private fun ONTunnelScreen(
                 if (added > 0) {
                     servers = merged
                     prefs.edit().putStringSet("items", merged.toSet()).apply()
-                    message = "Updated successfully – $added new server(s) added"
-                    messageIsSuccess = true
+                    snackbarHostState.showSnackbar("Updated successfully – $added new server(s) added")
                     Toast.makeText(context, "Updated successfully – $added new server(s)", Toast.LENGTH_SHORT).show()
                 }
             }
-            // Failures on auto-update are silent (no message)
         }
     }
 
-    fun updateSubscription(showToast: Boolean = true) {
+    fun updateSubscription() {
         if (isUpdating) return
         if (SUBSCRIPTION_URL.isBlank() || SUBSCRIPTION_URL.contains("example.com")) {
-            message = "Subscription URL not configured"
-            messageIsSuccess = false
+            scope.launch { snackbarHostState.showSnackbar("Subscription URL not configured") }
             return
         }
         scope.launch {
             isUpdating = true
-            message = ""
-            val result = withContext(Dispatchers.IO) {
-                fetchAndParseSubscription(SUBSCRIPTION_URL)
-            }
+            val result = withContext(Dispatchers.IO) { fetchAndParseSubscription(SUBSCRIPTION_URL) }
             isUpdating = false
             result.onSuccess { newEntries ->
                 val oldCount = servers.size
@@ -206,361 +185,318 @@ private fun ONTunnelScreen(
                 servers = merged
                 prefs.edit().putStringSet("items", merged.toSet()).apply()
                 if (added > 0) {
-                    message = "Updated successfully – $added new server(s) added"
-                    messageIsSuccess = true
-                    if (showToast) {
-                        Toast.makeText(context, "Updated successfully – $added new server(s)", Toast.LENGTH_SHORT).show()
-                    }
+                    snackbarHostState.showSnackbar("Updated successfully – $added new server(s) added")
+                    Toast.makeText(context, "Updated successfully – $added new server(s)", Toast.LENGTH_SHORT).show()
                 } else {
-                    message = "Already up to date"
-                    messageIsSuccess = true
-                    if (showToast) {
-                        Toast.makeText(context, "Already up to date", Toast.LENGTH_SHORT).show()
-                    }
+                    snackbarHostState.showSnackbar("Already up to date")
+                    Toast.makeText(context, "Already up to date", Toast.LENGTH_SHORT).show()
                 }
             }.onFailure { e ->
-                message = "Update failed: ${e.message}"
-                messageIsSuccess = false
+                snackbarHostState.showSnackbar("Update failed: ${e.message}")
             }
         }
     }
 
     MaterialTheme {
-        Surface(Modifier.fillMaxSize(), color = AppBg) {
+        Scaffold(
+            containerColor = Bg,
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            floatingActionButton = {
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        if (connected) {
+                            onDisconnect()
+                        } else {
+                            val encoded = selected.substringAfter("|", "")
+                            if (encoded.isBlank()) {
+                                scope.launch { snackbarHostState.showSnackbar("Please select a server first") }
+                            } else {
+                                try {
+                                    onConnect(String(Base64.decode(encoded, Base64.DEFAULT)))
+                                } catch (_: Exception) {
+                                    scope.launch { snackbarHostState.showSnackbar("Failed to read server config") }
+                                }
+                            }
+                        }
+                    },
+                    containerColor = if (connected) Color(0xFFE53935) else Color(0xFFE1BEE7),
+                    contentColor = if (connected) Color.White else TextDark,
+                    shape = RoundedCornerShape(28.dp),
+                    modifier = Modifier.padding(bottom = 8.dp)
+                ) {
+                    Text(
+                        if (connected) "Disconnect" else "Connect",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Icon(
+                        if (connected) Icons.Default.Stop else Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            },
+            floatingActionButtonPosition = FabPosition.Start
+        ) { padding ->
             Column(
                 Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(padding)
+                    .padding(horizontal = 16.dp)
             ) {
-                // ── Header ────────────────────────────────────────────────
+                // ── Top App Bar ───────────────────────────────────────────
                 Row(
-                    Modifier.fillMaxWidth(),
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp, bottom = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            "ON Tunnel",
-                            color = MainText,
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            "V2Ray / Xray Client",
-                            color = Muted,
-                            fontSize = 12.sp
-                        )
+                    IconButton(onClick = { /* menu placeholder */ }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Menu", tint = TextDark)
                     }
-                    // Refresh subscription button (URL is never shown)
-                    IconButton(
-                        onClick = { updateSubscription() },
-                        enabled = !isUpdating
-                    ) {
-                        if (isUpdating) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(22.dp),
-                                color = Accent,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(
-                                Icons.Default.Refresh,
-                                contentDescription = "Update servers",
-                                tint = Accent
-                            )
-                        }
-                    }
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "ON Tunnel",
+                        color = TextDark,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
-                Spacer(Modifier.height(20.dp))
-
-                // ── Connection panel ──────────────────────────────────────
+                // ── Status Card ───────────────────────────────────────────
                 Column(
                     Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(16.dp))
-                        .background(Panel)
+                        .background(CardBg)
                         .padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("CONNECTION STATUS", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                    Spacer(Modifier.height(6.dp))
                     Text(
                         when {
-                            connected -> "CONNECTED"
-                            state.contains("Connecting") -> "CONNECTING..."
-                            state.contains("Disconnecting") -> "DISCONNECTING..."
-                            else -> "DISCONNECTED"
+                            connected -> "Connected"
+                            state.contains("Connecting") -> "Connecting..."
+                            state.contains("Disconnecting") -> "Disconnecting..."
+                            state.startsWith("Error") -> state
+                            else -> "Disconnected"
                         },
-                        color = statusColor,
+                        color = if (connected) GreenDot else TextDark,
                         fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center
                     )
 
-                    Spacer(Modifier.height(20.dp))
+                    Spacer(Modifier.height(16.dp))
 
-                    // Big circular connect / stop button (v2rayNG style)
-                    Box(
-                        Modifier
-                            .size(150.dp)
-                            .clip(CircleShape)
-                            .background(if (connected) Color(0xFF0D2A1F) else Color(0xFF0D1B2A))
-                            .clickable {
-                                if (connected) {
-                                    onDisconnect()
-                                } else {
-                                    val encoded = selected.substringAfter("|", "")
-                                    if (encoded.isBlank()) {
-                                        message = "Please add and select a server first"
-                                        messageIsSuccess = false
-                                    } else {
-                                        try {
-                                            onConnect(String(Base64.decode(encoded, Base64.DEFAULT)))
-                                            message = ""
-                                        } catch (_: Exception) {
-                                            message = "Failed to read server config"
-                                            messageIsSuccess = false
-                                        }
-                                    }
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Box(
-                            Modifier
-                                .size(120.dp)
-                                .clip(CircleShape)
-                                .background(if (connected) Green else Accent),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                if (connected) "STOP" else "CONNECT",
-                                color = Color(0xFF0D1117),
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(14.dp))
-                    Text(
-                        if (connected) "Tap to disconnect" else "Tap to connect to selected server",
-                        color = Muted,
-                        fontSize = 12.sp
-                    )
-
-                    if (state.startsWith("Error")) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(state, color = Red, fontSize = 12.sp)
-                    }
-                    if (message.isNotBlank()) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            message,
-                            color = if (messageIsSuccess) Green else Red,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(14.dp))
-
-                // ── Current server card ───────────────────────────────────
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Panel)
-                        .padding(14.dp)
-                ) {
-                    Text("CURRENT SERVER", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                    Spacer(Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier
-                                .size(10.dp)
-                                .clip(CircleShape)
-                                .background(if (connected) Green else Muted)
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            selectedName,
-                            color = MainText,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            "${servers.size} servers",
-                            color = Muted,
-                            fontSize = 11.sp
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(18.dp))
-
-                // ── Configurations header ─────────────────────────────────
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "CONFIGURATIONS",
-                        color = MainText,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text("${servers.size} items", color = Muted, fontSize = 12.sp)
-                }
-
-                Spacer(Modifier.height(10.dp))
-
-                // ── Add config panel ──────────────────────────────────────
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Panel)
-                        .padding(14.dp)
-                ) {
-                    Text("Add configuration", color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                    Spacer(Modifier.height(10.dp))
-                    BasicTextField(
-                        value = input,
-                        onValueChange = { input = it; message = "" },
+                    // Update Servers button (same position as screenshot)
+                    Button(
+                        onClick = { updateSubscription() },
+                        enabled = !isUpdating,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(AppBg)
-                            .padding(12.dp),
-                        textStyle = TextStyle(color = MainText, fontSize = 13.sp),
-                        decorationBox = { inner ->
-                            if (input.isEmpty()) {
-                                Text(
-                                    "Paste VLESS / VMess / Trojan / JSON",
-                                    color = Muted,
-                                    fontSize = 12.sp
-                                )
-                            }
-                            inner()
-                        }
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Button(
-                        onClick = {
-                            try {
-                                val parsed = V2RayConfigParser.parse(input)
-                                val encoded = Base64.encodeToString(
-                                    parsed.config.toByteArray(),
-                                    Base64.NO_WRAP
-                                )
-                                val entry = parsed.name + "|" + encoded
-                                servers = (servers + entry).distinct()
-                                prefs.edit().putStringSet("items", servers.toSet()).apply()
-                                selected = entry
-                                prefs.edit().putString("selected", entry).apply()
-                                input = ""
-                                message = "Server added successfully"
-                                messageIsSuccess = true
-                            } catch (e: Exception) {
-                                message = e.message ?: "Invalid configuration"
-                                messageIsSuccess = false
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().height(44.dp),
-                        shape = RoundedCornerShape(8.dp),
+                            .height(48.dp),
+                        shape = RoundedCornerShape(24.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Accent,
-                            contentColor = Color(0xFF0D1117)
+                            containerColor = BlueBtn,
+                            contentColor = Color.White,
+                            disabledContainerColor = BlueBtn.copy(alpha = 0.6f)
                         )
                     ) {
-                        Text("+  Add Server", fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                Spacer(Modifier.height(14.dp))
-
-                // ── Server list ───────────────────────────────────────────
-                servers.forEach { item ->
-                    val name = item.substringBefore("|")
-                    val active = selected == item
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (active) PanelSelected.copy(alpha = 0.25f) else Panel)
-                            .clickable {
-                                selected = item
-                                prefs.edit().putString("selected", item).apply()
-                            }
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            Modifier
-                                .size(10.dp)
-                                .clip(CircleShape)
-                                .background(if (active) Accent else Muted)
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                name,
-                                color = MainText,
-                                fontSize = 14.sp,
-                                fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                        if (isUpdating) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
                             )
-                            Text(
-                                if (active) "SELECTED" else "Tap to select",
-                                color = if (active) Accent else Muted,
-                                fontSize = 10.sp
-                            )
-                        }
-                        IconButton(
-                            onClick = {
-                                servers = servers - item
-                                prefs.edit().putStringSet("items", servers.toSet()).apply()
-                                if (selected == item) {
-                                    selected = ""
-                                    prefs.edit().remove("selected").apply()
-                                }
-                            },
-                            modifier = Modifier.size(32.dp)
-                        ) {
+                            Spacer(Modifier.width(10.dp))
+                            Text("Updating...", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        } else {
                             Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "Delete",
-                                tint = Red,
-                                modifier = Modifier.size(18.dp)
+                                Icons.Default.Refresh,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
                             )
+                            Spacer(Modifier.width(8.dp))
+                            Text("Update Servers", fontSize = 15.sp, fontWeight = FontWeight.Medium)
                         }
                     }
                 }
 
                 Spacer(Modifier.height(16.dp))
-                Text(
-                    "ON Tunnel  •  VLESS  •  VMess  •  Trojan",
-                    color = Muted,
-                    fontSize = 11.sp
-                )
-                Spacer(Modifier.height(12.dp))
+
+                // ── Server list ───────────────────────────────────────────
+                if (servers.isEmpty()) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "No servers yet.\nTap Update Servers to fetch them.",
+                            color = TextMuted,
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(servers, key = { it }) { item ->
+                            val name = item.substringBefore("|")
+                            val active = selected == item
+                            val detail = remember(item) {
+                                try {
+                                    val cfg = String(Base64.decode(item.substringAfter("|"), Base64.DEFAULT))
+                                    extractProtocolInfo(cfg)
+                                } catch (_: Exception) {
+                                    ""
+                                }
+                            }
+
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(ServerCard)
+                                    .clickable {
+                                        selected = item
+                                        prefs.edit().putString("selected", item).apply()
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Delete button
+                                IconButton(
+                                    onClick = {
+                                        servers = servers - item
+                                        prefs.edit().putStringSet("items", servers.toSet()).apply()
+                                        if (selected == item) {
+                                            selected = ""
+                                            prefs.edit().remove("selected").apply()
+                                        }
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "Delete",
+                                        tint = RedDelete,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+
+                                Spacer(Modifier.width(4.dp))
+
+                                // Name + details
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        name,
+                                        color = TextDark,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (detail.isNotBlank()) {
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            detail,
+                                            color = TextMuted,
+                                            fontSize = 12.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+
+                                // Radio indicator
+                                Box(
+                                    Modifier
+                                        .size(22.dp)
+                                        .clip(CircleShape)
+                                        .border(
+                                            width = 2.dp,
+                                            color = if (active) AccentPurple else TextMuted.copy(alpha = 0.4f),
+                                            shape = CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (active) {
+                                        Box(
+                                            Modifier
+                                                .size(12.dp)
+                                                .clip(CircleShape)
+                                                .background(AccentPurple)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        item { Spacer(Modifier.height(80.dp)) } // space for FAB
+                    }
+                }
             }
         }
     }
 }
 
+/** Extract a short protocol summary from the Xray JSON config. */
+private fun extractProtocolInfo(json: String): String {
+    return try {
+        val obj = org.json.JSONObject(json)
+        val outbounds = obj.optJSONArray("outbounds") ?: return ""
+        val proxy = (0 until outbounds.length())
+            .mapNotNull { outbounds.optJSONObject(it) }
+            .firstOrNull { it.optString("tag") == "proxy" || it.optString("protocol") in listOf("vless", "vmess", "trojan") }
+            ?: return ""
+        val protocol = proxy.optString("protocol").uppercase()
+        val stream = proxy.optJSONObject("streamSettings")
+        val network = stream?.optString("network") ?: "tcp"
+        val security = stream?.optString("security") ?: "none"
+        val address: String
+        val port: Int
+        when (protocol.lowercase()) {
+            "vless", "vmess" -> {
+                val vnext = proxy.optJSONObject("settings")?.optJSONArray("vnext")?.optJSONObject(0)
+                address = vnext?.optString("address") ?: ""
+                port = vnext?.optInt("port") ?: 0
+            }
+            "trojan" -> {
+                val server = proxy.optJSONObject("settings")?.optJSONArray("servers")?.optJSONObject(0)
+                address = server?.optString("address") ?: ""
+                port = server?.optInt("port") ?: 0
+            }
+            else -> {
+                address = ""
+                port = 0
+            }
+        }
+        buildString {
+            append(protocol)
+            append(" • ")
+            append(network)
+            if (security != "none") {
+                append(" • ")
+                append(security)
+            }
+            if (address.isNotBlank()) {
+                append(" • ")
+                append(address)
+                if (port > 0) append(":$port")
+            }
+        }
+    } catch (_: Exception) {
+        ""
+    }
+}
+
 /**
  * Fetches the subscription URL, decodes base64 if needed, splits into lines,
- * and parses each valid V2Ray link into the same "name|base64config" format
- * used by the local server list.
+ * and parses each valid V2Ray link.
  */
 private fun fetchAndParseSubscription(url: String): Result<List<String>> = runCatching {
     val conn = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -572,11 +508,10 @@ private fun fetchAndParseSubscription(url: String): Result<List<String>> = runCa
     val body = conn.inputStream.bufferedReader().use { it.readText() }.trim()
     conn.disconnect()
 
-    // Subscription responses are usually base64-encoded lists of links
     val decoded = try {
         String(Base64.decode(body, Base64.DEFAULT), Charsets.UTF_8).trim()
     } catch (_: Exception) {
-        body // already plain text
+        body
     }
 
     val lines = decoded.lines().map { it.trim() }.filter { it.isNotBlank() }
