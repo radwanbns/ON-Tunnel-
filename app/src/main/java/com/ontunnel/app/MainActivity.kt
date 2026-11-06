@@ -314,8 +314,12 @@ internal fun ONTunnelApp(
                                     IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "Menu") }
                                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                                         DropdownMenuItem(
-                                            text = { Text("Check update") },
-                                            leadingIcon = { Icon(Icons.Default.Refresh, null) },
+                                            text = { Text(if (isUpdating) "Checking..." else "Check update") },
+                                            leadingIcon = {
+                                                if (isUpdating) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                                                else Icon(Icons.Default.Refresh, null)
+                                            },
+                                            enabled = !isUpdating,
                                             onClick = { menuOpen = false; runUpdate(auto = false) }
                                         )
                                         DropdownMenuItem(
@@ -387,30 +391,6 @@ internal fun ONTunnelApp(
                         if (error != null) {
                             item { ErrorCard(error, onDismissError) }
                         }
-                        // Update button – standalone
-                        item {
-                            Button(
-                                onClick = { runUpdate(auto = false) },
-                                enabled = !isUpdating,
-                                modifier = Modifier.fillMaxWidth().height(54.dp),
-                                shape = RoundedCornerShape(27.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFF1976D2), contentColor = Color.White,
-                                    disabledContainerColor = Color(0xFF1976D2).copy(alpha = 0.55f),
-                                    disabledContentColor = Color.White
-                                )
-                            ) {
-                                if (isUpdating) {
-                                    CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
-                                    Spacer(Modifier.width(10.dp))
-                                    Text("Updating...", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                                } else {
-                                    Icon(Icons.Default.Refresh, null, Modifier.size(22.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Update Servers", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                                }
-                            }
-                        }
                         item {
                             Row(
                                 Modifier.fillMaxWidth().padding(top = 8.dp, start = 4.dp),
@@ -431,7 +411,7 @@ internal fun ONTunnelApp(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        "No servers yet.\nTap Update Servers or use the menu to add one.",
+                                        "No servers yet.\nUse the menu ⋮ → Check update, or add one manually.",
                                         color = TextMuted, fontSize = 14.sp, textAlign = TextAlign.Center
                                     )
                                 }
@@ -532,7 +512,7 @@ internal fun ONTunnelApp(
                     onDismissRequest = { confirmDeleteAll = false },
                     containerColor = SurfaceC,
                     title = { Text("Delete all servers?") },
-                    text = { Text("This removes every server from the list. You can restore subscription servers with Update Servers.", color = TextMuted) },
+                    text = { Text("This removes every server from the list. You can restore subscription servers from the menu ⋮ → Check update.", color = TextMuted) },
                     confirmButton = {
                         TextButton(onClick = {
                             confirmDeleteAll = false
