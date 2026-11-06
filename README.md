@@ -1,12 +1,22 @@
 # ON Tunnel
 
-Android VPN app starter project.
+Android VPN application focused on V2Ray/Xray only.
 
 - Application ID: `com.ontunnel.app`
 - App name: ON Tunnel
-- Initial branding: OT
+- Launcher icon: OT
+- Minimum Android: 7.0 (API 24)
+- Core: `libv2ray.aar` from `2dust/AndroidLibXrayLite`, pinned to `v26.10.31`
 - Build: GitHub Actions workflow in `.github/workflows/android.yml`
 
-## Current status
+## Implemented in this repository
 
-This commit contains the Android/Compose starter interface and CI build workflow. The CONNECT control is currently a UI placeholder; it does not establish a VPN connection. V2Ray and the original ICS OpenVPN engine still need to be integrated and tested.
+- Xray native core dependency is downloaded by CI.
+- Android `VpnService` start/stop service and foreground notification.
+- VLESS, VMess, Trojan URI parsing and custom JSON import by paste.
+- Local server list storage.
+- ABI-specific debug APK jobs for arm64-v8a, armeabi-v7a, x86_64 and x86.
+
+## Verification status
+
+The source integration is committed, but a successful GitHub Actions build and real-device tunnel test have not yet been confirmed. TLS, Reality, WebSocket, gRPC and custom JSON profiles should be tested against working server links before distributing a release. The current profile importer does not yet implement subscription feeds or automatic GitHub server synchronization.
