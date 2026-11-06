@@ -45,7 +45,12 @@ class ONTunnelVpnService : VpnService() {
             }
             tun = builder.establish() ?: error("Failed to create VPN interface")
             Seq.setContext(applicationContext)
-            Libv2ray.initCoreEnv(filesDir.absolutePath, "01234567890123456789012345678901")
+            // The core expects BaseKey as Base64 encoding of exactly 32 raw bytes.
+            // Passing 32 ASCII characters directly is decoded as 24 bytes and fails XUDP validation.
+            Libv2ray.initCoreEnv(
+                filesDir.absolutePath,
+                "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
+            )
             val callback = object : CoreCallbackHandler {
                 override fun startup(): Long = 0
                 override fun shutdown(): Long = 0
