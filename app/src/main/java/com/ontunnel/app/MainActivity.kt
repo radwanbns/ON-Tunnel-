@@ -75,7 +75,7 @@ private val RedDelete = Color(0xFFE53935)
  * Example raw GitHub:
  *   https://raw.githubusercontent.com/USER/REPO/main/servers.txt
  */
-private const val SUBSCRIPTION_URL = "https://example.com/your-subscription-link"
+private const val SUBSCRIPTION_URL = "https://raw.githubusercontent.com/radwanbns/ON-Tunnel-/refs/heads/main/servers.txt"
 
 /**
  * Server entry stored as: name | base64(configJson) | originalUri | locked
@@ -181,11 +181,10 @@ private fun ONTunnelScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     var servers by remember {
-        mutableStateOf(
-            prefs.getStringSet("items", emptySet())
-                ?.mapNotNull { ServerEntry.parse(it) }
-                ?: emptyList()
-        )
+        val loaded: List<ServerEntry> =
+            (prefs.getStringSet("items", emptySet()) ?: emptySet())
+                .mapNotNull { ServerEntry.parse(it) }
+        mutableStateOf(loaded)
     }
     var selectedKey by remember { mutableStateOf(prefs.getString("selected", "") ?: "") }
     var isUpdating by remember { mutableStateOf(false) }
