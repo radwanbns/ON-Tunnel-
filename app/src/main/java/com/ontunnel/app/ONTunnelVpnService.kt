@@ -22,7 +22,10 @@ class ONTunnelVpnService : VpnService() {
             ACTION_STOP -> stopTunnel()
             ACTION_START -> {
                 val config = intent.getStringExtra(EXTRA_CONFIG)
-                if (config.isNullOrBlank()) { stopSelf(); return START_NOT_STICKY }
+                if (config.isNullOrBlank()) {
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
                 startForeground(NOTIFICATION_ID, notification())
                 Thread { startTunnel(config) }.start()
             }
@@ -36,8 +39,11 @@ class ONTunnelVpnService : VpnService() {
             val builder = Builder().setSession("ON Tunnel").setMtu(1500)
                 .addAddress("10.111.0.1", 32).addRoute("0.0.0.0", 0)
                 .addDnsServer("1.1.1.1").addDnsServer("8.8.8.8")
-            try { builder.addDisallowedApplication(packageName) } catch (_: Exception) {}
-            tun = builder.establish() ?: error("تعذر إنشاء واجهة VPN")
+            try {
+                builder.addDisallowedApplication(packageName)
+            } catch (_: Exception) {
+            }
+            tun = builder.establish() ?: error("Failed to create VPN interface")
             Seq.setContext(applicationContext)
             Libv2ray.initCoreEnv(filesDir.absolutePath, "on-tunnel")
             val callback = object : CoreCallbackHandler {
@@ -47,31 +53,52 @@ class ONTunnelVpnService : VpnService() {
             }
             core = Libv2ray.newCoreController(callback)
             core!!.startLoop(config, tun!!.fd.toLong().toInt())
-            sendBroadcast(Intent(ACTION_STATE).setPackage(packageName).putExtra(EXTRA_STATE, "connected"))
+            sendBroadcast(
+                Intent(ACTION_STATE).setPackage(packageName).putExtra(EXTRA_STATE, "connected")
+            )
         } catch (e: Exception) {
             stopCore()
-            sendBroadcast(Intent(ACTION_STATE).setPackage(packageName).putExtra(EXTRA_STATE, "error").putExtra(EXTRA_ERROR, e.message ?: "تعذر بدء الاتصال"))
+            sendBroadcast(
+                Intent(ACTION_STATE).setPackage(packageName)
+                    .putExtra(EXTRA_STATE, "error")
+                    .putExtra(EXTRA_ERROR, e.message ?: "Failed to start connection")
+            )
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
     }
 
     private fun stopCore() {
-        try { core?.stopLoop() } catch (_: Exception) {}
+        try {
+            core?.stopLoop()
+        } catch (_: Exception) {
+        }
         core = null
-        try { tun?.close() } catch (_: Exception) {}
+        try {
+            tun?.close()
+        } catch (_: Exception) {
+        }
         tun = null
     }
 
     private fun stopTunnel() {
         stopCore()
-        sendBroadcast(Intent(ACTION_STATE).setPackage(packageName).putExtra(EXTRA_STATE, "disconnected"))
+        sendBroadcast(
+            Intent(ACTION_STATE).setPackage(packageName).putExtra(EXTRA_STATE, "disconnected")
+        )
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
-    override fun onRevoke() { stopTunnel(); super.onRevoke() }
-    override fun onDestroy() { stopCore(); super.onDestroy() }
+    override fun onRevoke() {
+        stopTunnel()
+        super.onRevoke()
+    }
+
+    override fun onDestroy() {
+        stopCore()
+        super.onDestroy()
+    }
 
     private fun notification(): Notification {
         val channel = "on_tunnel_vpn"
@@ -80,8 +107,12 @@ class ONTunnelVpnService : VpnService() {
                 NotificationChannel(channel, "ON Tunnel VPN", NotificationManager.IMPORTANCE_LOW)
             )
         }
-        return NotificationCompat.Builder(this, channel).setSmallIcon(android.R.drawable.stat_sys_warning)
-            .setContentTitle("ON Tunnel").setContentText("اتصال VPN قيد التشغيل").setOngoing(true).build()
+        return NotificationCompat.Builder(this, channel)
+            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setContentTitle("ON Tunnel")
+            .setContentText("VPN connection is active")
+            .setOngoing(true)
+            .build()
     }
 
     companion object {
