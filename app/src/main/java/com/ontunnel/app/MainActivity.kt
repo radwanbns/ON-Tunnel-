@@ -61,7 +61,7 @@ private val RedDelete = Color(0xFFE53935)
  * Hardcoded subscription URL – NEVER shown in the UI.
  * Replace this with your real subscription link.
  */
-private const val SUBSCRIPTION_URL = "https://github.com/radwanbns/ON-Tunnel-/blob/main/servers.txt"
+private const val SUBSCRIPTION_URL = "https://raw.githubusercontent.com/radwanbns/ON-Tunnel-/refs/heads/main/servers.txt"
 
 class MainActivity : ComponentActivity() {
     private var pendingConfig: String? = null
