@@ -43,10 +43,8 @@ class ONTunnelVpnService : VpnService() {
             val builder = Builder().setSession("ON Tunnel").setMtu(1500)
                 .addAddress("10.111.0.1", 32).addRoute("0.0.0.0", 0)
                 .addDnsServer("1.1.1.1").addDnsServer("8.8.8.8")
-            try {
-                builder.addDisallowedApplication(packageName)
-            } catch (_: Exception) {
-            }
+            // Keep ON Tunnel's own network traffic inside the VPN.
+            // This lets subscription/server updates use the active VPN connection.
             tun = builder.establish() ?: error("Failed to create VPN interface")
             Seq.setContext(applicationContext)
             Libv2ray.initCoreEnv(filesDir.absolutePath, xudpBaseKey())
