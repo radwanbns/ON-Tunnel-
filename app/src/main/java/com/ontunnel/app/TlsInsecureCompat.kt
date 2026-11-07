@@ -34,19 +34,30 @@ object TlsInsecureCompat {
             val ob = outbounds.optJSONObject(i) ?: continue
             val ss = ob.optJSONObject("streamSettings") ?: continue
             val tls = ss.optJSONObject("tlsSettings") ?: continue
-            if (!tls.has("allowInsecure")) continue
+            // Xray expects pinnedPeerCertSha256 to be a STRING, not a JSON array.
+            // Normalize older/custom configs that may already contain an array.
+            if (tls.has("pinnedPeerCertSha256") && !tls.isNull("pinnedPeerCertSha256")) {
+                val pin = tls.opt("pinnedPeerCertSha256")
+                if (pin is JSONArray) {
+                    val firstPin = pin.optString(0).trim()
+                    if (firstPin.isNotEmpty()) tls.put("pinnedPeerCertSha256", firstPin)
+                    else tls.remove("pinnedPeerCertSha256")
+                    changed = true
+                }
+            }
 
             val insecure = tls.optBoolean("allowInsecure", false)
-            tls.remove("allowInsecure")
-            changed = true
-            if (!insecure) continue
-            if (tls.has("pinnedPeerCertSha256")) continue
+            if (tls.has("allowInsecure")) {
+                tls.remove("allowInsecure")
+                changed = true
+            }
+            if (!insecure || tls.has("pinnedPeerCertSha256")) continue
 
             val (host, port) = endpoint(ob) ?: continue
             val sni = tls.optString("serverName").ifBlank { host }
             val hash = fetchLeafSha256(host, port, sni)
                 ?: throw IllegalStateException("Allow insecure: could not reach $host:$port to read its certificate")
-            tls.put("pinnedPeerCertSha256", JSONArray().put(hash))
+            tls.put("pinnedPeerCertSha256", hash)
         }
         return if (changed) root.toString() else config
     }
