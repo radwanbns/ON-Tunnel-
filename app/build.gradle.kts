@@ -16,8 +16,20 @@ android {
     splits {
         abi { isEnable = true; reset(); include(*((project.findProperty("ABI_FILTERS") as? String)?.split(";")?.toTypedArray() ?: arrayOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")) ); isUniversalApk = false }
     }
+    signingConfigs {
+        create("release") {
+            val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
+            val keyAliasValue = System.getenv("KEY_ALIAS")
+            val keyPasswordValue = System.getenv("KEY_PASSWORD")
+            storeFile = rootProject.file("release-keystore.jks")
+            storePassword = keystorePassword
+            keyAlias = keyAliasValue
+            keyPassword = keyPasswordValue
+        }
+    }
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
