@@ -209,6 +209,11 @@ internal fun ONTunnelApp(
     }
 
     fun runUpdate(auto: Boolean) {
+        // Do not mutate the server list while a VPN session is active or changing state.
+        if (status != VpnStatus.Disconnected) {
+            if (!auto) message("Disconnect before updating servers")
+            return
+        }
         if (isUpdating) return
         if (!isSubscriptionConfigured()) {
             if (!auto) message("Subscription URL not configured")
@@ -319,7 +324,7 @@ internal fun ONTunnelApp(
                                                 if (isUpdating) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                                                 else Icon(Icons.Default.Refresh, null)
                                             },
-                                            enabled = !isUpdating,
+                                            enabled = !isUpdating && status == VpnStatus.Disconnected,
                                             onClick = { menuOpen = false; runUpdate(auto = false) }
                                         )
                                         DropdownMenuItem(
@@ -341,21 +346,25 @@ internal fun ONTunnelApp(
                                         DropdownMenuItem(
                                             text = { Text("Add server") },
                                             leadingIcon = { Icon(Icons.Default.Add, null) },
+                                            enabled = status == VpnStatus.Disconnected,
                                             onClick = { menuOpen = false; editing = EditorTarget(null, ServerProfile()) }
                                         )
                                         DropdownMenuItem(
                                             text = { Text("Paste link / JSON") },
                                             leadingIcon = { Icon(Icons.Default.Edit, null) },
+                                            enabled = status == VpnStatus.Disconnected,
                                             onClick = { menuOpen = false; showPaste = true }
                                         )
                                         DropdownMenuItem(
                                             text = { Text("Import from clipboard") },
                                             leadingIcon = { Icon(Icons.Default.ContentPaste, null) },
+                                            enabled = status == VpnStatus.Disconnected,
                                             onClick = { menuOpen = false; importFromClipboard() }
                                         )
                                         DropdownMenuItem(
                                             text = { Text("Delete added servers") },
                                             leadingIcon = { Icon(Icons.Default.Delete, null, tint = RedErr) },
+                                            enabled = status == VpnStatus.Disconnected,
                                             onClick = { menuOpen = false; confirmDeleteAll = true }
                                         )
                                     }
@@ -421,8 +430,19 @@ internal fun ONTunnelApp(
                                 ServerCard(
                                     entry = entry,
                                     selected = entry.id == selectedId,
-                                    onSelect = { select(entry.id) },
-                                    onEdit = { openEditor(entry) },
+                                    canModify = status == VpnStatus.Disconnected,
+                                    onSelect = {
+                                        if (status == VpnStatus.Disconnected || status == VpnStatus.Connected) {
+                                            val switchingServer = entry.id != selectedId
+                                            select(entry.id)
+                                            // Preserve the old behavior: tapping a server connects immediately.
+                                            // If already connected, tapping another server restarts on that server.
+                                            if (!tampered && (status == VpnStatus.Disconnected || switchingServer)) {
+                                                onConnect(entry.config)
+                                            }
+                                        }
+                                    },
+                                    onEdit = { if (status == VpnStatus.Disconnected) openEditor(entry) },
                                     onCopyUri = {
                                         if (entry.uri.isNotBlank()) copyText("URI", entry.uri)
                                         else message("No link stored for this server – use Copy JSON")
@@ -588,6 +608,7 @@ private fun ErrorCard(text: String, onDismiss: () -> Unit) {
 private fun ServerCard(
     entry: ServerEntry,
     selected: Boolean,
+    canModify: Boolean,
     onSelect: () -> Unit,
     onEdit: () -> Unit,
     onCopyUri: () -> Unit,
@@ -631,7 +652,8 @@ private fun ServerCard(
                     if (!entry.locked) {
                         DropdownMenuItem(
                             text = { Text("Edit") }, leadingIcon = { Icon(Icons.Default.Edit, null) },
-                            onClick = { menu = false; onEdit() }
+                            enabled = canModify,
+                            onClick = { menu = false; if (canModify) onEdit() }
                         )
                         DropdownMenuItem(
                             text = { Text("Copy link") }, leadingIcon = { Icon(Icons.Default.ContentCopy, null) },
@@ -643,14 +665,16 @@ private fun ServerCard(
                         )
                         DropdownMenuItem(
                             text = { Text("Duplicate") }, leadingIcon = { Icon(Icons.Default.Add, null) },
-                            onClick = { menu = false; onDuplicate() }
+                            enabled = canModify,
+                            onClick = { menu = false; if (canModify) onDuplicate() }
                         )
                     }
                     if (!entry.locked) {
                         DropdownMenuItem(
                             text = { Text("Delete", color = RedErr) },
                             leadingIcon = { Icon(Icons.Default.Delete, null, tint = RedErr) },
-                            onClick = { menu = false; onDelete() }
+                            enabled = canModify,
+                            onClick = { menu = false; if (canModify) onDelete() }
                         )
                     }
                 }
