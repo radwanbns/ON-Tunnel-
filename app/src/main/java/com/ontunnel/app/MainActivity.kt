@@ -421,7 +421,12 @@ internal fun ONTunnelApp(
                                 ServerCard(
                                     entry = entry,
                                     selected = entry.id == selectedId,
-                                    onSelect = { select(entry.id) },
+                                    onSelect = {
+                                        select(entry.id)
+                                        if (status != VpnStatus.Connecting && status != VpnStatus.Disconnecting) {
+                                            onConnect(entry.config)
+                                        }
+                                    },
                                     onEdit = { openEditor(entry) },
                                     onCopyUri = {
                                         if (entry.uri.isNotBlank()) copyText("URI", entry.uri)
