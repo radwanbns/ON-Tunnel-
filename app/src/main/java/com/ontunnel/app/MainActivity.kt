@@ -209,11 +209,8 @@ internal fun ONTunnelApp(
     }
 
     fun runUpdate(auto: Boolean) {
-        // Do not mutate the server list while a VPN session is active or changing state.
-        if (status != VpnStatus.Disconnected) {
-            if (!auto) message("Disconnect before updating servers")
-            return
-        }
+        // Subscription updates are allowed while connected. The app's own traffic
+        // is routed through the VPN so the download uses the active tunnel.
         if (isUpdating) return
         if (!isSubscriptionConfigured()) {
             if (!auto) message("Subscription URL not configured")
@@ -324,7 +321,7 @@ internal fun ONTunnelApp(
                                                 if (isUpdating) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                                                 else Icon(Icons.Default.Refresh, null)
                                             },
-                                            enabled = !isUpdating && status == VpnStatus.Disconnected,
+                                            enabled = !isUpdating,
                                             onClick = { menuOpen = false; runUpdate(auto = false) }
                                         )
                                         DropdownMenuItem(
