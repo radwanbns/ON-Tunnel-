@@ -38,6 +38,8 @@ class ONTunnelVpnService : VpnService() {
     private fun startTunnel(config: String) {
         try {
             stopCore()
+            // New Xray removed allowInsecure: convert it to certificate pinning (done before the VPN is up).
+            val finalConfig = TlsInsecureCompat.prepare(config)
             val builder = Builder().setSession("ON Tunnel").setMtu(1500)
                 .addAddress("10.111.0.1", 32).addRoute("0.0.0.0", 0)
                 .addDnsServer("1.1.1.1").addDnsServer("8.8.8.8")
@@ -54,7 +56,7 @@ class ONTunnelVpnService : VpnService() {
                 override fun onEmitStatus(code: Long, message: String?): Long = 0
             }
             core = Libv2ray.newCoreController(callback)
-            core!!.startLoop(config, tun!!.fd.toLong().toInt())
+            core!!.startLoop(finalConfig, tun!!.fd.toLong().toInt())
             running = true
             sendBroadcast(
                 Intent(ACTION_STATE).setPackage(packageName).putExtra(EXTRA_STATE, "connected")

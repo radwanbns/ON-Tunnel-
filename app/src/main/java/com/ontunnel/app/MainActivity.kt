@@ -354,7 +354,7 @@ internal fun ONTunnelApp(
                                             onClick = { menuOpen = false; importFromClipboard() }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Delete all servers") },
+                                            text = { Text("Delete added servers") },
                                             leadingIcon = { Icon(Icons.Default.Delete, null, tint = RedErr) },
                                             onClick = { menuOpen = false; confirmDeleteAll = true }
                                         )
@@ -373,106 +373,75 @@ internal fun ONTunnelApp(
                         )
                     }
                 ) { padding ->
-                    // Connect button stays fixed; only the server list scrolls
-                    Column(
-                        Modifier
-                            .fillMaxSize()
-                            .padding(padding)
+                    LazyColumn(
+                        Modifier.fillMaxSize().padding(padding),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        ConnectHero(
-                            status = status,
-                            serverName = servers.firstOrNull { it.id == selectedId }?.name,
-                            onClick = ::toggleConnect
-                        )
+                        item {
+                            ConnectHero(
+                                status = status,
+                                serverName = servers.firstOrNull { it.id == selectedId }?.name,
+                                onClick = ::toggleConnect
+                            )
+                        }
                         if (tampered) {
-                            Box(Modifier.padding(horizontal = 16.dp)) {
-                                ErrorCard(
-                                    "App signature does not match the official build – connection disabled for your safety.",
-                                    {}
-                                )
-                            }
+                            item { ErrorCard("App signature does not match the official build – connection disabled for your safety.", {}) }
                         }
                         if (error != null) {
-                            Box(Modifier.padding(horizontal = 16.dp)) {
-                                ErrorCard(error, onDismissError)
-                            }
+                            item { ErrorCard(error, onDismissError) }
                         }
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Servers", color = TextMain, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.width(8.dp))
-                            Box(
-                                Modifier
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(SurfaceHigh)
-                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                        item {
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 8.dp, start = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("${servers.size}", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Servers", color = TextMain, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.width(8.dp))
+                                Box(
+                                    Modifier.clip(RoundedCornerShape(10.dp)).background(SurfaceHigh)
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                ) { Text("${servers.size}", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                             }
                         }
-                        LazyColumn(
-                            Modifier
-                                .weight(1f)
-                                .fillMaxWidth(),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            if (servers.isEmpty()) {
-                                item {
-                                    Box(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(16.dp))
-                                            .background(SurfaceC)
-                                            .padding(28.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            "No servers yet.\nUse the menu ⋮ → Check update, or add one manually.",
-                                            color = TextMuted,
-                                            fontSize = 14.sp,
-                                            textAlign = TextAlign.Center
-                                        )
-                                    }
-                                }
-                            } else {
-                                items(servers, key = { it.id }) { entry ->
-                                    ServerCard(
-                                        entry = entry,
-                                        selected = entry.id == selectedId,
-                                        onSelect = {
-                                            select(entry.id)
-                                            // Auto-connect when a server is tapped
-                                            if (!tampered) {
-                                                onConnect(entry.config)
-                                            }
-                                        },
-                                        onEdit = { openEditor(entry) },
-                                        onCopyUri = {
-                                            if (entry.uri.isNotBlank()) copyText("URI", entry.uri)
-                                            else message("No link stored for this server – use Copy JSON")
-                                        },
-                                        onCopyJson = { copyText("JSON", entry.config) },
-                                        onDuplicate = {
-                                            val copy = entry.copy(
-                                                id = java.util.UUID.randomUUID().toString(),
-                                                name = entry.name + " copy"
-                                            )
-                                            saveServers(servers + copy)
-                                        },
-                                        onDelete = {
-                                            saveServers(servers.filter { it.id != entry.id })
-                                            if (selectedId == entry.id) select("")
-                                        }
+                        if (servers.isEmpty()) {
+                            item {
+                                Box(
+                                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(SurfaceC).padding(28.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        "No servers yet.\nUse the menu ⋮ → Check update, or add one manually.",
+                                        color = TextMuted, fontSize = 14.sp, textAlign = TextAlign.Center
                                     )
                                 }
                             }
-                            item { Spacer(Modifier.height(24.dp)) }
+                        } else {
+                            items(servers, key = { it.id }) { entry ->
+                                ServerCard(
+                                    entry = entry,
+                                    selected = entry.id == selectedId,
+                                    onSelect = { select(entry.id) },
+                                    onEdit = { openEditor(entry) },
+                                    onCopyUri = {
+                                        if (entry.uri.isNotBlank()) copyText("URI", entry.uri)
+                                        else message("No link stored for this server – use Copy JSON")
+                                    },
+                                    onCopyJson = { copyText("JSON", entry.config) },
+                                    onDuplicate = {
+                                        val copy = entry.copy(id = java.util.UUID.randomUUID().toString(), name = entry.name + " copy")
+                                        saveServers(servers + copy)
+                                    },
+                                    onDelete = {
+                                        if (!entry.locked) {
+                                            saveServers(servers.filter { it.id != entry.id })
+                                            if (selectedId == entry.id) select("")
+                                        }
+                                    }
+                                )
+                            }
                         }
+                        item { Spacer(Modifier.height(24.dp)) }
                     }
                 }
             }
@@ -544,12 +513,14 @@ internal fun ONTunnelApp(
                 AlertDialog(
                     onDismissRequest = { confirmDeleteAll = false },
                     containerColor = SurfaceC,
-                    title = { Text("Delete all servers?") },
-                    text = { Text("This removes every server from the list. You can restore subscription servers from the menu ⋮ → Check update.", color = TextMuted) },
+                    title = { Text("Delete added servers?") },
+                    text = { Text("This removes only the servers you added (from clipboard, links or manually). Locked subscription servers are kept.", color = TextMuted) },
                     confirmButton = {
                         TextButton(onClick = {
                             confirmDeleteAll = false
-                            saveServers(emptyList()); select("")
+                            val keep = servers.filter { it.locked }
+                            saveServers(keep)
+                            if (keep.none { it.id == selectedId }) select("")
                         }) { Text("Delete", color = RedErr) }
                     },
                     dismissButton = { TextButton(onClick = { confirmDeleteAll = false }) { Text("Cancel") } }
@@ -652,13 +623,12 @@ private fun ServerCard(
                 entry.name, color = TextMain, fontSize = 15.sp, fontWeight = FontWeight.Medium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
             )
-            // Options menu only for unlocked (manual) servers – locked ones cannot be deleted
-            if (!entry.locked) {
-                Box {
-                    IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.MoreVert, "Options", tint = TextMuted, modifier = Modifier.size(20.dp))
-                    }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            if (!entry.locked) Box {
+                IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.MoreVert, "Options", tint = TextMuted, modifier = Modifier.size(20.dp))
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    if (!entry.locked) {
                         DropdownMenuItem(
                             text = { Text("Edit") }, leadingIcon = { Icon(Icons.Default.Edit, null) },
                             onClick = { menu = false; onEdit() }
@@ -675,6 +645,8 @@ private fun ServerCard(
                             text = { Text("Duplicate") }, leadingIcon = { Icon(Icons.Default.Add, null) },
                             onClick = { menu = false; onDuplicate() }
                         )
+                    }
+                    if (!entry.locked) {
                         DropdownMenuItem(
                             text = { Text("Delete", color = RedErr) },
                             leadingIcon = { Icon(Icons.Default.Delete, null, tint = RedErr) },
@@ -682,9 +654,6 @@ private fun ServerCard(
                         )
                     }
                 }
-            } else {
-                // Keep layout spacing consistent for locked servers
-                Spacer(Modifier.size(36.dp))
             }
         }
     }

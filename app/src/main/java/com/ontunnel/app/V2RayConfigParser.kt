@@ -224,7 +224,10 @@ object V2RayConfigParser {
 
         when (sec) {
             "tls" -> {
-                val tls = JSONObject().put("serverName", sni).put("allowInsecure", p.allowInsecure)
+                val tls = JSONObject().put("serverName", sni)
+                // Marker only: ONTunnelVpnService/TlsInsecureCompat converts it to pinnedPeerCertSha256
+                // because the Xray core no longer accepts "allowInsecure".
+                if (p.allowInsecure) tls.put("allowInsecure", true)
                 if (p.alpn.isNotBlank()) tls.put("alpn", array(p.alpn))
                 if (p.fingerprint.isNotBlank() && p.fingerprint != "none") tls.put("fingerprint", p.fingerprint)
                 s.put("tlsSettings", tls)
