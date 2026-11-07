@@ -7,6 +7,8 @@ on:
   workflow_dispatch:
 jobs:
   build:
+    # Signing secrets are only available to trusted push/manual runs, not pull requests.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -19,6 +21,13 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - name: Restore release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          test -n "$KEYSTORE_BASE64"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
+          test -s release-keystore.jks
       - name: Download pinned Xray core
         run: |
           mkdir -p app/libs
@@ -28,10 +37,18 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - name: Build ABI APK
-        run: gradle assembleDebug --no-daemon -PABI_FILTERS=${{ matrix.abi }}
-      - name: Upload APK
+      - name: Build signed release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_PASSWORD"
+          test -n "$KEY_ALIAS"
+          test -n "$KEY_PASSWORD"
+          gradle assembleRelease --no-daemon -PABI_FILTERS=${{ matrix.abi }}
+      - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: ON-Tunnel-${{ matrix.abi }}
-          path: app/build/outputs/apk/debug/*.apk
+          name: ON-Tunnel-release-${{ matrix.abi }}
+          path: app/build/outputs/apk/release/*.apk
