@@ -5,40 +5,47 @@ import android.content.pm.PackageManager
 import android.os.Build
 import java.security.MessageDigest
 
-object AppIntegrity {
+/**
+ * Runtime signing-certificate verification.
+ *
+ * The expected digest is XOR-obfuscated in the DEX rather than stored as
+ * a readable SHA-256 string. This is obfuscation only, not cryptographic
+ * secrecy; the APK's signing certificate remains the trust anchor.
+ */
+internal object AppIntegrity {
 
-    private const val EXPECTED_SHA256 = "E5:43:2A:9F:EC:AA:79:42:54:42:8D:D1:18:EE:10:AB:B7:B4:4B:0C:6F:C6:4D:6F:97:EB:9A:9C:17:6E:2D:68"
+    private const val MASK = 0x5A
 
     private fun expectedDigest(): ByteArray {
-        val hex = EXPECTED_SHA256.replace(":", "").trim()
-        require(hex.length == 64 && hex.all { it in "0123456789abcdefABCDEF" })
-        return ByteArray(32) { index ->
-            hex.substring(index * 2, index * 2 + 2).toInt(16).toByte()
+        val encoded = intArrayOf(191, 25, 112, 197, 182, 240, 35, 24, 14, 24, 215, 139, 66, 180, 74, 241, 237, 238, 17, 86, 53, 156, 23, 53, 205, 177, 192, 198, 77, 52, 119, 50)
+        return ByteArray(encoded.size) { index ->
+            (encoded[index] xor MASK).toByte()
         }
     }
 
     fun isAppValid(context: Context): Boolean {
         return try {
             val expected = expectedDigest()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                // Ask Android's package manager to verify the installed signing certificate.
-                context.packageManager.hasSigningCertificate(
+            val packageManager = context.packageManager
+
+            val actualSigners = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val info = packageManager.getPackageInfo(
                     context.packageName,
-                    expected,
-                    PackageManager.CERT_INPUT_SHA256
+                    PackageManager.GET_SIGNING_CERTIFICATES
                 )
+                info.signingInfo?.apkContentsSigners ?: return false
             } else {
                 @Suppress("DEPRECATION")
-                val signatures = context.packageManager.getPackageInfo(
+                packageManager.getPackageInfo(
                     context.packageName,
                     PackageManager.GET_SIGNATURES
                 ).signatures ?: return false
+            }
 
-                signatures.any { signature ->
-                    val actual = MessageDigest.getInstance("SHA-256")
-                        .digest(signature.toByteArray())
-                    MessageDigest.isEqual(actual, expected)
-                }
+            actualSigners.any { signer ->
+                val actual = MessageDigest.getInstance("SHA-256")
+                    .digest(signer.toByteArray())
+                MessageDigest.isEqual(actual, expected)
             }
         } catch (_: Exception) {
             false
