@@ -8,7 +8,7 @@ import java.security.MessageDigest
 
 object AppIntegrity {
 
-    private const val EXPECTED_SHA256 = "PUT_SHA256_HERE"
+    private const val EXPECTED_SHA256 = "E5:43:2A:9F:EC:AA:79:42:54:42:8D:D1:18:EE:10:AB:B7:B4:4B:0C:6F:C6:4D:6F:97:EB:9A:9C:17:6E:2D:68"
 
     fun isAppValid(context: Context): Boolean {
         return try {
