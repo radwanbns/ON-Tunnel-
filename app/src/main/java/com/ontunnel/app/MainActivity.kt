@@ -94,9 +94,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Check the installed APK signing certificate without force-closing the app.
-        // A certificate mismatch disables VPN connection but keeps the UI accessible.
-        tamperDetected = !AppIntegrity.isAppValid(this)
+        // Close the app immediately if its signing certificate does not match.
+        if (!AppIntegrity.isAppValid(this)) {
+            finishAffinity()
+            android.os.Process.killProcess(android.os.Process.myPid())
+            return
+        }
+        tamperDetected = false
         ContextCompat.registerReceiver(
             this, stateReceiver, IntentFilter(ONTunnelVpnService.ACTION_STATE),
             ContextCompat.RECEIVER_NOT_EXPORTED
