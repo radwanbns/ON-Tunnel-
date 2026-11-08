@@ -389,18 +389,21 @@ internal fun ONTunnelApp(
                         )
                     }
                 ) { padding ->
-                    LazyColumn(
-                        Modifier.fillMaxSize().padding(padding),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(padding)
                     ) {
-                        item {
-                            ConnectHero(
-                                status = status,
-                                serverName = servers.firstOrNull { it.id == selectedId }?.name,
-                                onClick = ::toggleConnect
-                            )
-                        }
+                        // Keep the connection control outside the scrolling server list.
+                        // Only the server list below is allowed to scroll.
+                        ConnectHero(
+                            status = status,
+                            serverName = servers.firstOrNull { it.id == selectedId }?.name,
+                            onClick = ::toggleConnect
+                        )
+                        LazyColumn(
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
                         if (tampered) {
                             item { ErrorCard("App signature does not match the official build – connection disabled for your safety.", {}) }
                         }
