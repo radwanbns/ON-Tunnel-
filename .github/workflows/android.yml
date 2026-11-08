@@ -1,35 +1,82 @@
+
 name: Android Build
+
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     strategy:
       fail-fast: false
       matrix:
         abi: [arm64-v8a, armeabi-v7a, x86_64, x86]
+
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Restore fixed Debug keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: on-tunnel-debug-keystore-v1
+
+      - name: Create Debug keystore if missing
+        run: |
+          mkdir -p ~/.android
+          if [ ! -s ~/.android/debug.keystore ]; then
+            keytool -genkeypair \
+              -keystore ~/.android/debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
       - name: Download pinned Xray core
         run: |
           mkdir -p app/libs
-          curl -L --fail --retry 3 "https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.31/libv2ray.aar" -o app/libs/libv2ray.aar
+          curl -L --fail --retry 3 \
+            "https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.31/libv2ray.aar" \
+            -o app/libs/libv2ray.aar
           test -s app/libs/libv2ray.aar
+
       - name: Setup Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
+
       - name: Build ABI APK
-        run: gradle assembleDebug --no-daemon -PABI_FILTERS=${{ matrix.abi }}
+        run: |
+          gradle assembleDebug --no-daemon -PABI_FILTERS=${{ matrix.abi }}
+
+      - name: Print APK SHA-256
+        run: |
+          for apk in app/build/outputs/apk/debug/*.apk; do
+            sha256sum "$apk"
+          done
+
+      - name: Print signing certificate SHA-256
+        run: |
+          keytool -list -v \
+            -keystore ~/.android/debug.keystore \
+            -storepass android \
+            -alias androiddebugkey | grep "SHA256:"
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
