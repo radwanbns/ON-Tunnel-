@@ -94,7 +94,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        tamperDetected = IntegrityGuard.status(this) == IntegrityGuard.Status.MISMATCH
+        // Verify the installed APK signing certificate before initializing the UI.
+        if (!AppIntegrity.isAppValid(this)) {
+            finishAffinity()
+            android.os.Process.killProcess(android.os.Process.myPid())
+            return
+        }
+        tamperDetected = false
         ContextCompat.registerReceiver(
             this, stateReceiver, IntentFilter(ONTunnelVpnService.ACTION_STATE),
             ContextCompat.RECEIVER_NOT_EXPORTED
