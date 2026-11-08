@@ -26,8 +26,8 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           test -n "$KEYSTORE_BASE64"
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
-          test -s release-keystore.jks
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release-keystore.p12
+          test -s release-keystore.p12
       - name: Download pinned Xray core
         run: |
           mkdir -p app/libs
