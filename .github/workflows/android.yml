@@ -67,7 +67,17 @@ jobs:
             sdkmanager_path="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
           fi
           test -x "$sdkmanager_path"
+          # sdkmanager may close the pipe after accepting all licenses.
+          # Ignore yes/SIGPIPE, but preserve any real sdkmanager failure.
+          set +e
           yes | "$sdkmanager_path" --licenses >/dev/null
+          license_status=("${PIPESTATUS[@]}")
+          set -e
+          sdkmanager_status="${license_status[1]}"
+          if [ "$sdkmanager_status" -ne 0 ]; then
+            echo "::error::sdkmanager --licenses failed with exit code $sdkmanager_status"
+            exit "$sdkmanager_status"
+          fi
           "$sdkmanager_path" "ndk;27.2.12479018" "cmake;3.22.1"
 
       - name: Setup Gradle 8.9
