@@ -1,11 +1,12 @@
 
+import java.io.ByteArrayOutputStream
+import org.gradle.api.tasks.Exec
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
-
-import java.security.MessageDigest
 
 android {
     namespace = "com.ontunnel.app"
@@ -53,7 +54,6 @@ android {
     }
 }
 
-// استخراج بصمة شهادة Debug المستخدمة في البناء
 tasks.register("printDebugSha256") {
     dependsOn("assembleDebug")
 
@@ -63,19 +63,20 @@ tasks.register("printDebugSha256") {
         }.files.firstOrNull()
             ?: error("Debug APK not found")
 
-        val signer = java.io.ByteArrayOutputStream()
+        val output = ByteArrayOutputStream()
 
-        exec {
+        project.exec {
             commandLine(
-                "bash", "-c",
-                "keytool -printcert -jarfile '${apk.absolutePath}'"
+                "keytool",
+                "-printcert",
+                "-jarfile",
+                apk.absolutePath
             )
-            standardOutput = signer
+            standardOutput = output
         }
 
-        val output = signer.toString()
         println("DEBUG APK CERTIFICATE:")
-        println(output)
+        println(output.toString())
     }
 }
 
@@ -87,7 +88,6 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     debugImplementation("androidx.compose.ui:ui-tooling")
