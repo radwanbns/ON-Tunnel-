@@ -72,12 +72,24 @@ jobs:
           set -euo pipefail
           expected="$(keytool -list -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey | awk -F': ' '/SHA256:/{print $2; exit}' | tr -d ':' | tr '[:lower:]' '[:upper:]')"
           test -n "$expected"
+
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$sdk_root"
+          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$apksigner"
+
           count=0
           for apk in app/build/outputs/apk/debug/*.apk; do
             test -f "$apk"
             echo "=== $(basename "$apk") ==="
-            actual="$(keytool -printcert -jarfile "$apk" | awk -F': ' '/SHA256:/{print $2; exit}' | tr -d ':' | tr '[:lower:]' '[:upper:]')"
-            echo "APK SHA-256: $actual"
+            cert_output="$("$apksigner" verify --print-certs "$apk")"
+            echo "$cert_output"
+            actual="$(printf '%s\\n' "$cert_output" | sed -nE 's/.*certificate SHA-256 digest: ([0-9A-Fa-f:]+).*/\\1/p' | head -n 1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+            echo "APK certificate SHA-256: $actual"
+            if [ -z "$actual" ]; then
+              echo "::error::Could not extract APK signing certificate SHA-256."
+              exit 1
+            fi
             if [ "$actual" != "$expected" ]; then
               echo "::error::APK signing certificate does not match the fixed Debug keystore."
               exit 1
