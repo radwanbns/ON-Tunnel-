@@ -84,7 +84,7 @@ jobs:
             echo "=== $(basename "$apk") ==="
             cert_output="$("$apksigner" verify --print-certs "$apk")"
             echo "$cert_output"
-            actual="$(printf '%s\\n' "$cert_output" | sed -nE 's/.*certificate SHA-256 digest: ([0-9A-Fa-f:]+).*/\\1/p' | head -n 1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+            actual="$(printf '%s\\n' "$cert_output" | awk '/certificate SHA-256 digest:/ {print $NF; exit}' | tr -d ':' | tr '[:lower:]' '[:upper:]')"
             echo "APK certificate SHA-256: $actual"
             if [ -z "$actual" ]; then
               echo "::error::Could not extract APK signing certificate SHA-256."
