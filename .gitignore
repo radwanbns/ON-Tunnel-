@@ -1,0 +1,15 @@
+# Never commit signing material.
+*.jks
+*.keystore
+*.p12
+*.pfx
+credentials.txt
+release-keystore/
+local.properties
+
+# Build output / IDE
+/build/
+/app/build/
+*.iml
+.gradle/
+.idea/
