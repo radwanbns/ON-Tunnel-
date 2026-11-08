@@ -62,7 +62,7 @@ jobs:
 
       - name: Build ABI APK
         run: |
-          gradle assembleDebug --no-daemon -PABI_FILTERS=${{ matrix.abi }}
+          gradle printDebugSha256 --no-daemon -PABI_FILTERS=${{ matrix.abi }}
 
       - name: Print APK SHA-256
         run: |
