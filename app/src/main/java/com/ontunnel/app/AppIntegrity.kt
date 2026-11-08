@@ -1,4 +1,5 @@
-package com.xraytunnel.app
+
+package com.ontunnel.app
 
 import android.content.Context
 import android.content.pm.PackageManager
@@ -7,30 +8,23 @@ import java.security.MessageDigest
 
 object AppIntegrity {
 
-    // ضع بصمة شهادة Debug SHA-256 هنا بعد استخراجها
-    private const val EXPECTED_SHA256 = "2d831523ad55f1f08c1760e77086973f068b8289458f9150befc766069539873"
+    private const val EXPECTED_SHA256 = "PUT_SHA256_HERE"
 
     fun isAppValid(context: Context): Boolean {
         return try {
-            val packageInfo = if (Build.VERSION.SDK_INT >= 28) {
-                context.packageManager.getPackageInfo(
+            val signatures = if (Build.VERSION.SDK_INT >= 28) {
+                val info = context.packageManager.getPackageInfo(
                     context.packageName,
                     PackageManager.GET_SIGNING_CERTIFICATES
                 )
+                info.signingInfo?.apkContentsSigners
             } else {
                 @Suppress("DEPRECATION")
                 context.packageManager.getPackageInfo(
                     context.packageName,
                     PackageManager.GET_SIGNATURES
-                )
-            }
-
-            val signatures = if (Build.VERSION.SDK_INT >= 28) {
-                packageInfo.signingInfo.apkContentsSigners
-            } else {
-                @Suppress("DEPRECATION")
-                packageInfo.signatures
-            }
+                ).signatures
+            } ?: return false
 
             signatures.any { signature ->
                 val digest = MessageDigest.getInstance("SHA-256")
