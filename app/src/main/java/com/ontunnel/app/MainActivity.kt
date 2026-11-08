@@ -94,13 +94,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Verify the installed APK signing certificate before initializing the UI.
-        if (!AppIntegrity.isAppValid(this)) {
-            finishAffinity()
-            android.os.Process.killProcess(android.os.Process.myPid())
-            return
-        }
-        tamperDetected = false
+        // Check the installed APK signing certificate without force-closing the app.
+        // A certificate mismatch disables VPN connection but keeps the UI accessible.
+        tamperDetected = !AppIntegrity.isAppValid(this)
         ContextCompat.registerReceiver(
             this, stateReceiver, IntentFilter(ONTunnelVpnService.ACTION_STATE),
             ContextCompat.RECEIVER_NOT_EXPORTED
