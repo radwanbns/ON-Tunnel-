@@ -92,6 +92,16 @@ class MainActivity : ComponentActivity() {
 
     private var tamperDetected by mutableStateOf(false)
 
+    override fun onResume() {
+        super.onResume()
+        // Re-check the installed APK certificate whenever the activity returns.
+        if (!AppIntegrity.isAppValid(this)) {
+            finishAffinity()
+            android.os.Process.killProcess(android.os.Process.myPid())
+            return
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Close the app immediately if its signing certificate does not match.
