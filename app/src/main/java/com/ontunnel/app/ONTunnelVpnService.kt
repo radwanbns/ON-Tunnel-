@@ -23,6 +23,16 @@ class ONTunnelVpnService : VpnService() {
         when (intent?.action) {
             ACTION_STOP -> stopTunnel()
             ACTION_START -> {
+                // Verify again at the VPN-service boundary; a patched UI alone cannot start a tunnel.
+                if (!AppIntegrity.isAppValid(this)) {
+                    sendBroadcast(
+                        Intent(ACTION_STATE).setPackage(packageName)
+                            .putExtra(EXTRA_STATE, "error")
+                            .putExtra(EXTRA_ERROR, "App integrity check failed")
+                    )
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
                 val config = intent.getStringExtra(EXTRA_CONFIG)
                 if (config.isNullOrBlank()) {
                     stopSelf()
