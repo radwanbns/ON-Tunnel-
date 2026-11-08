@@ -58,11 +58,10 @@ import java.net.URL
 /**
  * Hardcoded subscription URL – NEVER shown in the UI.
  * Content: one VLESS / VMess / Trojan link per line, or the whole file base64-encoded.
- *
- * Real values are XOR-encrypted in SecureStrings.kt, and the decode key is
- * derived from the running APK's actual signing certificate – see
- * SecureStrings.kt for why that matters. Both now require a Context.
  */
+// Real values are XOR-encrypted in SecureStrings.kt – never stored as plain strings.
+private val SUBSCRIPTION_URL: String get() = SecureStrings.subscriptionUrl
+private val TELEGRAM_URL: String get() = SecureStrings.telegramUrl
 
 internal enum class VpnStatus { Disconnected, Connecting, Connected, Disconnecting }
 
@@ -93,28 +92,24 @@ class MainActivity : ComponentActivity() {
 
     private var tamperDetected by mutableStateOf(false)
 
-    /** Single choke point for every "should this process keep running?"
-     *  decision. Called from several independent lifecycle hooks below on
-     *  purpose – a patch that neutralizes one call site still gets caught
-     *  by the others. */
-    private fun verifyOrDie(): Boolean {
-        if (!AppIntegrity.isEnvironmentTrusted(this) || ThreatDetector.hasActiveInstrumentation(this)) {
-            finishAffinity()
-            android.os.Process.killProcess(android.os.Process.myPid())
-            return false
-        }
-        return true
-    }
-
     override fun onResume() {
         super.onResume()
-        // Re-check whenever the activity returns to the foreground.
-        if (!verifyOrDie()) return
+        // Re-check the installed APK certificate whenever the activity returns.
+        if (!AppIntegrity.isAppValid(this)) {
+            finishAffinity()
+            android.os.Process.killProcess(android.os.Process.myPid())
+            return
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (!verifyOrDie()) return
+        // Close the app immediately if its signing certificate does not match.
+        if (!AppIntegrity.isAppValid(this)) {
+            finishAffinity()
+            android.os.Process.killProcess(android.os.Process.myPid())
+            return
+        }
         tamperDetected = false
         ContextCompat.registerReceiver(
             this, stateReceiver, IntentFilter(ONTunnelVpnService.ACTION_STATE),
@@ -164,11 +159,10 @@ class MainActivity : ComponentActivity() {
 }
 
 private fun openTelegram(context: Context) {
-    val url = SecureStrings.telegramUrl(context)
     try {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TELEGRAM_URL)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     } catch (_: ActivityNotFoundException) {
-        Toast.makeText(context, url, Toast.LENGTH_LONG).show()
+        Toast.makeText(context, TELEGRAM_URL, Toast.LENGTH_LONG).show()
     }
 }
 
@@ -212,18 +206,6 @@ internal fun ONTunnelApp(
         }
     }
 
-    // Continuous re-check while the app is on screen (not just at onCreate/onResume) –
-    // catches an active debugger/Frida attach that happens mid-session.
-    LaunchedEffect(Unit) {
-        while (true) {
-            kotlinx.coroutines.delay(10_000)
-            if (!AppIntegrity.isEnvironmentTrusted(context) || ThreatDetector.hasActiveInstrumentation(context)) {
-                (context as? Activity)?.finishAffinity()
-                android.os.Process.killProcess(android.os.Process.myPid())
-            }
-        }
-    }
-
     fun message(text: String) { scope.launch { snackbar.showSnackbar(text) } }
 
     fun saveServers(list: List<ServerEntry>) {
@@ -244,13 +226,13 @@ internal fun ONTunnelApp(
 
     fun runUpdate(auto: Boolean) {
         if (isUpdating) return
-        if (!isSubscriptionConfigured(context)) {
+        if (!isSubscriptionConfigured()) {
             if (!auto) message("Subscription URL not configured")
             return
         }
         scope.launch {
             isUpdating = true
-            val result = withContext(Dispatchers.IO) { fetchAndParseSubscription(SecureStrings.subscriptionUrl(context)) }
+            val result = withContext(Dispatchers.IO) { fetchAndParseSubscription(SUBSCRIPTION_URL) }
             isUpdating = false
             result.onSuccess { fresh ->
                 val oldLocked = servers.filter { it.locked }.associateBy { it.name }
@@ -723,12 +705,10 @@ private fun PasteDialog(
     )
 }
 
-private fun isSubscriptionConfigured(context: Context): Boolean {
-    val url = SecureStrings.subscriptionUrl(context)
-    return url.isNotBlank() &&
-        !url.contains("example.com") &&
-        (url.startsWith("http://") || url.startsWith("https://"))
-}
+private fun isSubscriptionConfigured(): Boolean =
+    SUBSCRIPTION_URL.isNotBlank() &&
+        !SUBSCRIPTION_URL.contains("example.com") &&
+        (SUBSCRIPTION_URL.startsWith("http://") || SUBSCRIPTION_URL.startsWith("https://"))
 
 /** Supports plain text (one link per line) and base64-encoded subscription bodies. */
 private fun fetchAndParseSubscription(url: String): Result<List<ServerEntry>> = runCatching {

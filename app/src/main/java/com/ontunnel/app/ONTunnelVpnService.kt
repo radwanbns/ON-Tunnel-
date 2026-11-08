@@ -20,16 +20,6 @@ class ONTunnelVpnService : VpnService() {
     private var core: CoreController? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Independent enforcement point: even if the UI's checks were
-        // patched out, the service that actually opens the tunnel refuses
-        // to run in an untrusted environment.
-        if (!AppIntegrity.isEnvironmentTrusted(applicationContext) ||
-            ThreatDetector.hasActiveInstrumentation(applicationContext)
-        ) {
-            stopSelf()
-            android.os.Process.killProcess(android.os.Process.myPid())
-            return START_NOT_STICKY
-        }
         when (intent?.action) {
             ACTION_STOP -> stopTunnel()
             ACTION_START -> {
