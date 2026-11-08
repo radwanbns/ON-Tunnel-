@@ -58,6 +58,18 @@ jobs:
             -o app/libs/libv2ray.aar
           test -s app/libs/libv2ray.aar
 
+      - name: Install Android NDK and CMake
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager_path="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$sdkmanager_path" ]; then
+            sdkmanager_path="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          fi
+          test -x "$sdkmanager_path"
+          yes | "$sdkmanager_path" --licenses >/dev/null
+          "$sdkmanager_path" "ndk;27.2.12479018" "cmake;3.22.1"
+
       - name: Setup Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
