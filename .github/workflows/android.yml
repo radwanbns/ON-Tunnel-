@@ -20,7 +20,9 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # Reuse the same debug signing key between workflow runs.
       - name: Restore fixed Debug keystore
+        id: debug-keystore-cache
         uses: actions/cache@v4
         with:
           path: ~/.android/debug.keystore
@@ -38,8 +40,15 @@ jobs:
               -keyalg RSA \
               -keysize 2048 \
               -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
+              -dname "CN=ON Tunnel Debug,O=ON Tunnel,C=US"
           fi
+
+      - name: Show fixed signing certificate
+        run: |
+          keytool -list -v \
+            -keystore ~/.android/debug.keystore \
+            -storepass android \
+            -alias androiddebugkey | grep "SHA256:"
 
       - name: Download pinned Xray core
         run: |
@@ -54,21 +63,29 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Build all ABI APKs with one signing key
-        run: gradle printDebugSha256 --no-daemon
+      - name: Build all ABI APKs with the fixed signing key
+        run: gradle assembleDebug --no-daemon
 
-      - name: Print APK SHA-256
+      - name: Verify the signature of every APK
+        shell: bash
         run: |
+          set -euo pipefail
+          expected="$(keytool -list -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey | awk -F': ' '/SHA256:/{print $2; exit}' | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+          test -n "$expected"
+          count=0
           for apk in app/build/outputs/apk/debug/*.apk; do
-            sha256sum "$apk"
+            test -f "$apk"
+            echo "=== $(basename "$apk") ==="
+            actual="$(keytool -printcert -jarfile "$apk" | awk -F': ' '/SHA256:/{print $2; exit}' | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+            echo "APK SHA-256: $actual"
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::APK signing certificate does not match the fixed Debug keystore."
+              exit 1
+            fi
+            count=$((count + 1))
           done
-
-      - name: Print signing certificate SHA-256
-        run: |
-          keytool -list -v \
-            -keystore ~/.android/debug.keystore \
-            -storepass android \
-            -alias androiddebugkey | grep "SHA256:"
+          test "$count" -gt 0
+          echo "All $count APK files use the same fixed signing certificate."
 
       - name: Upload all ABI APKs
         uses: actions/upload-artifact@v4
