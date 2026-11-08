@@ -7,7 +7,7 @@ import java.security.MessageDigest
 
 object AppIntegrity {
 
-    private const val EXPECTED_SHA256 = "E8:C2:3E:49:01:AB:E2:17:39:A5:D7:00:9F:2F:F6:14:0F:73:B5:9E:A6:88:6F:2B:42:77:F2:D1:A2:42:F5:09"
+    private const val EXPECTED_SHA256 = "E5:43:2A:9F:EC:AA:79:42:54:42:8D:D1:18:EE:10:AB:B7:B4:4B:0C:6F:C6:4D:6F:97:EB:9A:9C:17:6E:2D:68"
 
     private fun expectedDigest(): ByteArray {
         val hex = EXPECTED_SHA256.replace(":", "").trim()
