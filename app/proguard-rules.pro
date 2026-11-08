@@ -2,7 +2,7 @@
 # Full-strength shrinking + obfuscation: renames and repackages every class
 # that isn't explicitly kept below, flattens package structure, strips all
 # debugging metadata, and removes logging. This is what makes classes.dex
-# hard to read or patch after decompilation.
+# hard to read and patch after decompilation.
 
 -repackageclasses ''
 -allowaccessmodification
@@ -30,6 +30,7 @@
 -keep class go.** { *; }
 -dontwarn libv2ray.**
 -dontwarn go.**
+-keep class com.ontunnel.app.NativeIntegrity { *; }
 
 # ── Android framework entry points R8 cannot infer on its own ───────────
 -keep public class com.ontunnel.app.MainActivity
