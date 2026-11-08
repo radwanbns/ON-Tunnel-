@@ -10,6 +10,7 @@ plugins {
 android {
     namespace = "com.ontunnel.app"
     compileSdk = 35
+    ndkVersion = "27.2.12479018"
 
     defaultConfig {
         applicationId = "com.ontunnel.app"
@@ -17,6 +18,19 @@ android {
         targetSdk = 35
         versionCode = 6
         versionName = "1.5"
+
+        externalNativeBuild {
+            cmake {
+                cppFlags += "-std=c++17"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     splits {
