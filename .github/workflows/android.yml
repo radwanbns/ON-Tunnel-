@@ -1,4 +1,3 @@
-
 name: Android Build
 
 on:
@@ -11,11 +10,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
-    strategy:
-      fail-fast: false
-      matrix:
-        abi: [arm64-v8a, armeabi-v7a, x86_64, x86]
 
     steps:
       - uses: actions/checkout@v4
@@ -60,9 +54,8 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Build ABI APK
-        run: |
-          gradle printDebugSha256 --no-daemon -PABI_FILTERS=${{ matrix.abi }}
+      - name: Build all ABI APKs with one signing key
+        run: gradle printDebugSha256 --no-daemon
 
       - name: Print APK SHA-256
         run: |
@@ -77,8 +70,8 @@ jobs:
             -storepass android \
             -alias androiddebugkey | grep "SHA256:"
 
-      - name: Upload APK
+      - name: Upload all ABI APKs
         uses: actions/upload-artifact@v4
         with:
-          name: ON-Tunnel-${{ matrix.abi }}
+          name: ON-Tunnel-all
           path: app/build/outputs/apk/debug/*.apk
