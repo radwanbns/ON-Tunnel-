@@ -1,4 +1,3 @@
-
 import java.io.ByteArrayOutputStream
 import org.gradle.api.tasks.Exec
 
@@ -40,53 +39,13 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
-
-        // Real release signing. NEVER reuses the debug keystore above.
-        // Resolved from environment variables (CI, via GitHub Secrets) or
-        // from gradle.properties (local dev – gitignored, never commit it).
-        // If none of these are set the release build type below simply
-        // falls back to no signing config, producing an unsigned APK rather
-        // than silently signing with a weak/shared key.
-        create("release") {
-            val storeFilePath = System.getenv("RELEASE_STORE_FILE")
-                ?: (findProperty("RELEASE_STORE_FILE") as? String)
-            if (!storeFilePath.isNullOrBlank() && file(storeFilePath).exists()) {
-                storeFile = file(storeFilePath)
-                storePassword = System.getenv("RELEASE_STORE_PASSWORD")
-                    ?: (findProperty("RELEASE_STORE_PASSWORD") as? String)
-                keyAlias = System.getenv("RELEASE_KEY_ALIAS")
-                    ?: (findProperty("RELEASE_KEY_ALIAS") as? String)
-                keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
-                    ?: (findProperty("RELEASE_KEY_PASSWORD") as? String)
-            }
-        }
     }
 
     buildTypes {
-        // Development / CI smoke-test builds ONLY. android:debuggable=true
-        // is implied by this build type, which makes `adb shell run-as`,
-        // JDWP debugger attach, and most generic smali-patching tool-chains
-        // (MT Manager, NP Manager, etc.) dramatically easier. NEVER
-        // distribute this build type to end users.
         debug {
             signingConfig = signingConfigs.getByName("stableDebug")
             isMinifyEnabled = true
             isShrinkResources = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-        }
-
-        // This is what must ship to end users.
-        release {
-            val releaseSigning = signingConfigs.getByName("release")
-            if (releaseSigning.storeFile != null) {
-                signingConfig = releaseSigning
-            }
-            isDebuggable = false
-            isMinifyEnabled = true
-            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
