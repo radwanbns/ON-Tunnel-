@@ -24,7 +24,7 @@ internal object AppIntegrity {
     }
 
     private fun expectedDigest(): ByteArray {
-        val encoded = intArrayOf(191, 25, 112, 197, 182, 240, 35, 24, 14, 24, 215, 139, 66, 180, 74, 241, 237, 238, 17, 86, 53, 156, 23, 53, 205, 177, 192, 198, 77, 52, 119, 50)
+        val encoded = intArrayOf(117, 137, 175, 19, 101, 50, 181, 198, 3, 9, 92, 171, 4, 110, 202, 118, 148, 242, 187, 158, 225, 191, 98, 158, 88, 218, 173, 180, 45, 198, 250, 80)
         return ByteArray(encoded.size) { index ->
             (encoded[index] xor MASK).toByte()
         }
