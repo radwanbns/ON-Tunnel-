@@ -21,8 +21,8 @@ android {
             val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
             val keyAliasValue = System.getenv("KEY_ALIAS")
             val keyPasswordValue = System.getenv("KEY_PASSWORD")
-            storeFile = rootProject.file("release-keystore.jks")
-            storeType = "JKS"
+            storeFile = rootProject.file("release-keystore.p12")
+            storeType = "PKCS12"
             storePassword = keystorePassword
             keyAlias = keyAliasValue
             keyPassword = keyPasswordValue
