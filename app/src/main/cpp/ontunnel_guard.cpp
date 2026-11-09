@@ -21,6 +21,14 @@ constexpr uint8_t kEncodedDigest[] = {
     88, 218, 173, 180, 45, 198, 250, 80
 };
 
+// SHA-256 of the stable debug APK signing certificate, XOR 0x5A.
+constexpr uint8_t kEncodedDebugDigest[] = {
+    191, 25, 112, 197, 182, 240, 35, 24,
+    14, 24, 215, 139, 66, 180, 74, 241,
+    237, 238, 17, 86, 53, 156, 23, 53,
+    205, 177, 192, 198, 77, 52, 119, 50
+};
+
 bool has_exception(JNIEnv* env) {
     if (!env->ExceptionCheck()) return false;
     env->ExceptionClear();
@@ -135,12 +143,17 @@ bool matches_signer(JNIEnv* env, jobject signer) {
     env->GetByteArrayRegion(actual, 0, size, bytes);
     if (has_exception(env)) return false;
 
-    uint8_t difference = 0;
+    uint8_t releaseDifference = 0;
+    uint8_t debugDifference = 0;
     for (jsize i = 0; i < size; ++i) {
-        const uint8_t expected = static_cast<uint8_t>(kEncodedDigest[i] ^ kDigestMask);
-        difference |= static_cast<uint8_t>(bytes[i]) ^ expected;
+        const uint8_t releaseExpected =
+            static_cast<uint8_t>(kEncodedDigest[i] ^ kDigestMask);
+        const uint8_t debugExpected =
+            static_cast<uint8_t>(kEncodedDebugDigest[i] ^ kDigestMask);
+        releaseDifference |= static_cast<uint8_t>(bytes[i]) ^ releaseExpected;
+        debugDifference |= static_cast<uint8_t>(bytes[i]) ^ debugExpected;
     }
-    return difference == 0;
+    return releaseDifference == 0 || debugDifference == 0;
 }
 
 } // namespace
