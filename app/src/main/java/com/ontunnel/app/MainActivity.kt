@@ -54,6 +54,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.Socket
 
 /**
  * Hardcoded subscription URL – NEVER shown in the UI.
@@ -186,6 +187,8 @@ internal fun ONTunnelApp(
     var servers by remember { mutableStateOf(store.load()) }
     var selectedId by remember { mutableStateOf(store.selectedId) }
     var isUpdating by remember { mutableStateOf(false) }
+    var pingResults by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var pingRunning by remember { mutableStateOf<Set<String>>(emptySet()) }
     var menuOpen by remember { mutableStateOf(false) }
     // Shown on EVERY app launch (rememberSaveable only survives rotation, not a new launch)
     var showTelegram by rememberSaveable { mutableStateOf(true) }
@@ -247,6 +250,39 @@ internal fun ONTunnelApp(
             }.onFailure { e ->
                 if (!auto) message("Update failed: ${e.message}")
             }
+        }
+    }
+
+    fun testPing(entry: ServerEntry) {
+        if (entry.id in pingRunning) return
+        pingRunning = pingRunning + entry.id
+        pingResults = pingResults + (entry.id to "Testing…")
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { V2RayPingTester.test(entry.config) }
+            pingResults = pingResults + (entry.id to result)
+            pingRunning = pingRunning - entry.id
+        }
+    }
+
+    fun testAllPings() {
+        val targets = servers.filter { V2RayPingTester.isSupported(it.config) }
+        if (targets.isEmpty()) { message("No V2Ray servers to test"); return }
+        scope.launch {
+            targets.forEach { entry ->
+                if (entry.id !in pingRunning) {
+                    pingRunning = pingRunning + entry.id
+                    pingResults = pingResults + (entry.id to "Testing…")
+                }
+            }
+            // Test sequentially to avoid opening too many sockets on mobile networks.
+            targets.forEach { entry ->
+                if (entry.id in pingRunning) {
+                    val result = withContext(Dispatchers.IO) { V2RayPingTester.test(entry.config) }
+                    pingResults = pingResults + (entry.id to result)
+                    pingRunning = pingRunning - entry.id
+                }
+            }
+            message("Ping test completed")
         }
     }
 
@@ -421,6 +457,21 @@ internal fun ONTunnelApp(
                                     Modifier.clip(RoundedCornerShape(10.dp)).background(SurfaceHigh)
                                         .padding(horizontal = 8.dp, vertical = 2.dp)
                                 ) { Text("${servers.size}", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                                Spacer(Modifier.weight(1f))
+                                val pingableCount = servers.count { V2RayPingTester.isSupported(it.config) }
+                                if (pingableCount > 0) {
+                                    OutlinedButton(
+                                        onClick = ::testAllPings,
+                                        enabled = pingRunning.isEmpty(),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(34.dp)
+                                    ) {
+                                        if (pingRunning.isNotEmpty()) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                                        else Icon(Icons.Default.NetworkPing, null, modifier = Modifier.size(15.dp))
+                                        Spacer(Modifier.width(5.dp))
+                                        Text(if (pingRunning.isNotEmpty()) "TESTING" else "TEST ALL", fontSize = 11.sp)
+                                    }
+                                }
                             }
                         }
                         if (servers.isEmpty()) {
@@ -440,6 +491,9 @@ internal fun ONTunnelApp(
                                 ServerCard(
                                     entry = entry,
                                     selected = entry.id == selectedId,
+                                    pingResult = pingResults[entry.id],
+                                    pingLoading = entry.id in pingRunning,
+                                    onPing = { testPing(entry) },
                                     onSelect = {
                                         select(entry.id)
                                         if (status != VpnStatus.Connecting && status != VpnStatus.Disconnecting) {
@@ -613,6 +667,9 @@ private fun ErrorCard(text: String, onDismiss: () -> Unit) {
 private fun ServerCard(
     entry: ServerEntry,
     selected: Boolean,
+    pingResult: String?,
+    pingLoading: Boolean,
+    onPing: () -> Unit,
     onSelect: () -> Unit,
     onEdit: () -> Unit,
     onCopyUri: () -> Unit,
@@ -648,6 +705,28 @@ private fun ServerCard(
                 entry.name, color = TextMain, fontSize = 15.sp, fontWeight = FontWeight.Medium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
             )
+            if (V2RayPingTester.isSupported(entry.config)) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    TextButton(onClick = onPing, enabled = !pingLoading, contentPadding = PaddingValues(horizontal = 6.dp), modifier = Modifier.height(34.dp)) {
+                        if (pingLoading) CircularProgressIndicator(Modifier.size(13.dp), strokeWidth = 2.dp)
+                        else Icon(Icons.Default.NetworkPing, "Test ping", modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text("PING", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                    if (pingResult != null) {
+                        Text(
+                            pingResult,
+                            color = when {
+                                pingResult.endsWith("ms") -> Color(0xFF27AE60)
+                                pingResult == "Testing…" -> Accent
+                                else -> RedErr
+                            },
+                            fontSize = 9.sp,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
             if (!entry.locked) Box {
                 IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Default.MoreVert, "Options", tint = TextMuted, modifier = Modifier.size(20.dp))
