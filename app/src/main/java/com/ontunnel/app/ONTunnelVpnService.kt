@@ -4,6 +4,8 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -47,6 +49,15 @@ class ONTunnelVpnService : VpnService() {
 
     private fun startTunnel(config: String) {
         try {
+            // Do not report a VPN connection when the phone has no usable internet network.
+            val connectivity = getSystemService(ConnectivityManager::class.java)
+            val activeNetwork = connectivity.activeNetwork
+            val capabilities = activeNetwork?.let(connectivity::getNetworkCapabilities)
+            val hasInternet = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) &&
+                !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+            if (!hasInternet) error("No internet connection. Turn on Wi-Fi or mobile data and try again.")
+
             stopCore()
             // New Xray removed allowInsecure: convert it to certificate pinning (done before the VPN is up).
             val finalConfig = TlsInsecureCompat.prepare(config)
