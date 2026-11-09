@@ -169,5 +169,5 @@ internal object V2RayPingTester {
     private class WsHttpException(message: String) : Exception(message)
     private val ALLOWED_PORTS = setOf(80, 443)
     private const val TIMEOUT_MS = 8000
-    private const val RETRY_DELAY_MS = 500
+    private const val RETRY_DELAY_MS = 500L
 }
