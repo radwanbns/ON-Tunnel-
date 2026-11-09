@@ -98,6 +98,8 @@ class MainActivity : ComponentActivity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val completedId = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) ?: -1L
             if (completedId != updateDownloadId) return
+            getSharedPreferences("app_update", MODE_PRIVATE).edit().remove("download_id").apply()
+            updateDownloadId = -1L
             val manager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
             val query = DownloadManager.Query().setFilterById(completedId)
             manager.query(query).use { cursor ->
@@ -139,6 +141,8 @@ class MainActivity : ComponentActivity() {
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 .setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, "ON-Tunnel-update.apk")
             updateDownloadId = (getSystemService(DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+            getSharedPreferences("app_update", MODE_PRIVATE).edit()
+                .putLong("download_id", updateDownloadId).apply()
             availableAppUpdate = null
             Toast.makeText(this, "Downloading ON Tunnel update...", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
@@ -156,7 +160,9 @@ class MainActivity : ComponentActivity() {
             android.os.Process.killProcess(android.os.Process.myPid())
             return
         }
-        installDownloadedUpdate()
+        if (Build.VERSION.SDK_INT < 26 || packageManager.canRequestPackageInstalls()) {
+            installDownloadedUpdate()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -176,6 +182,8 @@ class MainActivity : ComponentActivity() {
             this, updateReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
+        updateDownloadId = getSharedPreferences("app_update", MODE_PRIVATE)
+            .getLong("download_id", -1L)
         Thread {
             val update = AppUpdater.checkForUpdate(this)
             if (update != null) runOnUiThread { availableAppUpdate = update }
