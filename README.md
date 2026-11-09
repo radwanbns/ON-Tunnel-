@@ -1,6 +1,6 @@
 # ON Tunnel
 
-Android VPN application focused on V2Ray/Xray only.
+Android VPN application: V2Ray/Xray (built-in core) and OpenVPN (through the "OpenVPN for Android" engine).
 
 - Application ID: `com.ontunnel.app`
 - App name: ON Tunnel
@@ -22,6 +22,42 @@ Android VPN application focused on V2Ray/Xray only.
 - **Hidden subscription update** – a hardcoded subscription URL is fetched silently on app launch and via the refresh button. The URL is **never displayed** in the UI.
 - Success toast / message when new servers are added from the subscription.
 - ABI-specific debug APK jobs for arm64-v8a, armeabi-v7a, x86_64 and x86.
+
+## OpenVPN (new in 1.8)
+
+OpenVPN profiles live next to V2Ray servers in the same list (key icon + protocol badge).
+
+**Engine.** OpenVPN itself is *not* bundled. ON Tunnel drives the free
+[OpenVPN for Android](https://play.google.com/store/apps/details?id=de.blinkt.openvpn) app (`de.blinkt.openvpn`) through its
+official remote AIDL API (`app/src/main/aidl/de/blinkt/openvpn/api`). The first connection asks for two one-time permissions
+(allow ON Tunnel to control it, and the Android VPN dialog). Reason: that engine is GPLv2 and its author states that embedding it in a
+closed UI app needs a paid licence, while use of the AIDL API from an external app is explicitly *not* covered by the licence.
+
+**Adding profiles.** `Add server` → *Import OpenVPN file* (.ovpn picker), *New OpenVPN profile*, or paste/clipboard (auto-detected).
+Username/password are optional and embedded as an inline `auth-user-pass` block.
+
+**Connection types** (editor → *Connection type*):
+
+| Type | What happens |
+| --- | --- |
+| Direct | the `.ovpn` is passed to OpenVPN for Android unchanged (TCP or UDP) |
+| HTTP payload | a local relay dials the server (optionally via an HTTP proxy), sends your payload, waits for `101`/`2xx`, then carries raw OpenVPN-over-TCP bytes |
+| WebSocket | the relay performs a real RFC 6455 handshake and carries OpenVPN inside masked binary frames (ping/pong handled) |
+
+Payload / WebSocket can use TLS with a custom **SNI** (and an optional *allow insecure* switch), a **connect-to** override (CDN edge / front
+domain) and a custom Host header. Payload tags: `[crlf] [cr] [lf] [host] [port] [host_port] [ua] [ws_key] [split] [delay_split]`.
+Example: `GET / HTTP/1.1[crlf]Host: [host][crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf][crlf]`.
+
+How the relay works: the profile is rewritten to `proto tcp-client` + `remote 127.0.0.1 <port>`, and the relay's upstream IP is added as
+`route <ip> 255.255.255.255 net_gateway` so the relay's own socket bypasses the tunnel (no loop). The server must expose OpenVPN over **TCP**
+behind the payload/WebSocket endpoint (UDP cannot be wrapped).
+
+The relay core is plain Java (`app/src/main/java/com/ontunnel/app/ovpn`) and is covered by `tools/ovpn-core-test` (run in CI).
+
+## UI changes in 1.8
+
+Pulsing connect button with live connection timer, status detail line, protocol badges (VLESS · WS · TLS, OpenVPN · WebSocket…),
+rounded server cards, and an *Add server* bottom sheet.
 
 ## Subscription URL
 
