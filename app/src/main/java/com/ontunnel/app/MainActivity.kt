@@ -467,7 +467,7 @@ internal fun ONTunnelApp(
                                         modifier = Modifier.height(34.dp)
                                     ) {
                                         if (pingRunning.isNotEmpty()) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-                                        else Icon(Icons.Default.NetworkPing, null, modifier = Modifier.size(15.dp))
+                                        else Icon(Icons.Default.Speed, null, modifier = Modifier.size(15.dp))
                                         Spacer(Modifier.width(5.dp))
                                         Text(if (pingRunning.isNotEmpty()) "TESTING" else "TEST ALL", fontSize = 11.sp)
                                     }
@@ -709,7 +709,7 @@ private fun ServerCard(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     TextButton(onClick = onPing, enabled = !pingLoading, contentPadding = PaddingValues(horizontal = 6.dp), modifier = Modifier.height(34.dp)) {
                         if (pingLoading) CircularProgressIndicator(Modifier.size(13.dp), strokeWidth = 2.dp)
-                        else Icon(Icons.Default.NetworkPing, "Test ping", modifier = Modifier.size(15.dp))
+                        else Icon(Icons.Default.Speed, "Test ping", modifier = Modifier.size(15.dp))
                         Spacer(Modifier.width(3.dp))
                         Text("PING", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
