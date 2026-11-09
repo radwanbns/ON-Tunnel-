@@ -194,7 +194,8 @@ class MainActivity : ComponentActivity() {
                 onConnect = ::connect,
                 onDisconnect = ::disconnect,
                 appUpdate = availableAppUpdate,
-                onDownloadAppUpdate = ::startAppUpdateDownload
+                onDownloadAppUpdate = ::startAppUpdateDownload,
+                onDismissAppUpdate = { availableAppUpdate = null }
             )
         }
     }
@@ -246,7 +247,8 @@ internal fun ONTunnelApp(
     onConnect: (String) -> Unit,
     onDisconnect: () -> Unit,
     appUpdate: AppUpdateInfo?,
-    onDownloadAppUpdate: (AppUpdateInfo) -> Unit
+    onDownloadAppUpdate: (AppUpdateInfo) -> Unit,
+    onDismissAppUpdate: () -> Unit
 ) {
     val context = LocalContext.current
     val store = remember { ServerStore(context) }
@@ -540,9 +542,9 @@ internal fun ONTunnelApp(
                 }
             }
 
-            appUpdate?.let { update ->
+            appUpdate?.takeIf { !showTelegram }?.let { update ->
                 AlertDialog(
-                    onDismissRequest = { },
+                    onDismissRequest = onDismissAppUpdate,
                     containerColor = SurfaceC,
                     title = { Text("ON Tunnel update available", fontWeight = FontWeight.Bold) },
                     text = {
@@ -556,7 +558,7 @@ internal fun ONTunnelApp(
                             Text("Download and install")
                         }
                     },
-                    dismissButton = { TextButton(onClick = { /* Check again on next launch */ }) { Text("Later") } }
+                    dismissButton = { TextButton(onClick = onDismissAppUpdate) { Text("Later") } }
                 )
             }
 
