@@ -10,9 +10,6 @@ import android.os.ParcelFileDescriptor
 import android.util.Base64
 import androidx.core.app.NotificationCompat
 import java.security.SecureRandom
-import java.net.InetSocketAddress
-import java.net.Socket
-import org.json.JSONObject
 import go.Seq
 import libv2ray.CoreCallbackHandler
 import libv2ray.CoreController
@@ -21,7 +18,6 @@ import libv2ray.Libv2ray
 class ONTunnelVpnService : VpnService() {
     private var tun: ParcelFileDescriptor? = null
     private var core: CoreController? = null
-    @Volatile private var monitorActive = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -52,12 +48,6 @@ class ONTunnelVpnService : VpnService() {
     private fun startTunnel(config: String) {
         try {
             stopCore()
-            // Test the actual proxy host/port, not Android's network flags alone.
-            val endpoint = proxyEndpoint(config)
-                ?: error("Cannot find the server IP/host and port in this configuration")
-            if (!probeEndpoint(endpoint.first, endpoint.second)) {
-                error("Server is unreachable. Check your data/Wi-Fi connection or server address.")
-            }
             // New Xray removed allowInsecure: convert it to certificate pinning (done before the VPN is up).
             val finalConfig = TlsInsecureCompat.prepare(config)
             val builder = Builder().setSession("ON Tunnel").setMtu(1500)
@@ -81,25 +71,6 @@ class ONTunnelVpnService : VpnService() {
             sendBroadcast(
                 Intent(ACTION_STATE).setPackage(packageName).putExtra(EXTRA_STATE, "connected")
             )
-            // Recheck every five seconds; clear Connected when the network or host goes down.
-            monitorActive = true
-            Thread {
-                while (monitorActive && running) {
-                    try { Thread.sleep(5000) } catch (_: InterruptedException) { break }
-                    if (!monitorActive || !running) break
-                    if (!probeEndpoint(endpoint.first, endpoint.second)) {
-                        stopCore()
-                        sendBroadcast(
-                            Intent(ACTION_STATE).setPackage(packageName)
-                                .putExtra(EXTRA_STATE, "error")
-                                .putExtra(EXTRA_ERROR, "Internet connection lost or server is unreachable")
-                        )
-                        stopForeground(STOP_FOREGROUND_REMOVE)
-                        stopSelf()
-                        break
-                    }
-                }
-            }.start()
         } catch (e: Exception) {
             stopCore()
             sendBroadcast(
@@ -132,40 +103,7 @@ class ONTunnelVpnService : VpnService() {
         return key
     }
 
-    /** Extract the VLESS/VMess/Trojan server host and port from Xray JSON. */
-    private fun proxyEndpoint(config: String): Pair<String, Int>? {
-        return try {
-            val outbounds = JSONObject(config).optJSONArray("outbounds") ?: return null
-            for (i in 0 until outbounds.length()) {
-                val outbound = outbounds.optJSONObject(i) ?: continue
-                if (outbound.optString("protocol") !in setOf("vless", "vmess", "trojan")) continue
-                val settings = outbound.optJSONObject("settings") ?: continue
-                val servers = settings.optJSONArray("vnext") ?: settings.optJSONArray("servers") ?: continue
-                val server = servers.optJSONObject(0) ?: continue
-                val host = server.optString("address").trim()
-                val port = server.optInt("port", 0)
-                if (host.isNotBlank() && port in 1..65535) return host to port
-            }
-            null
-        } catch (_: Exception) { null }
-    }
-
-    /** Test the endpoint using the underlying network, outside the VPN tunnel. */
-    private fun probeEndpoint(host: String, port: Int): Boolean {
-        val socket = Socket()
-        return try {
-            if (!protect(socket)) return false
-            socket.connect(InetSocketAddress(host, port), 7000)
-            true
-        } catch (_: Exception) {
-            false
-        } finally {
-            try { socket.close() } catch (_: Exception) { }
-        }
-    }
-
     private fun stopCore() {
-        monitorActive = false
         running = false
         try {
             core?.stopLoop()
