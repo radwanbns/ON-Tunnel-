@@ -5,6 +5,7 @@ import org.json.JSONObject
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.security.SecureRandom
+import javax.net.ssl.SNIHostName
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 import kotlin.system.measureTimeMillis
@@ -20,6 +21,7 @@ internal object V2RayPingTester {
         val port: Int,
         val path: String,
         val wsHost: String,
+        val serverName: String,
         val useTls: Boolean,
         val extraHeaders: Map<String, String>
     )
@@ -38,7 +40,7 @@ internal object V2RayPingTester {
                         val ssl = (SSLSocketFactory.getDefault() as SSLSocketFactory)
                             .createSocket(raw, target.host, target.port, true) as SSLSocket
                         ssl.soTimeout = TIMEOUT_MS
-                        ssl.startHandshake()
+                        if (!target.serverName.matches(Regex("[0-9.]+"))) {\n                            val params = ssl.sslParameters\n                            params.serverNames = listOf(SNIHostName(target.serverName))\n                            ssl.sslParameters = params\n                        }\n                        ssl.startHandshake()
                         ssl
                     } else raw
 
@@ -119,7 +121,7 @@ internal object V2RayPingTester {
 
             val headers = ws.optJSONObject("headers")
             val wsHost = headers?.optString("Host")?.takeIf { it.isNotBlank() } ?: host
-            val rawPath = ws.optString("path", "/").substringBefore('?')
+            val rawPath = ws.optString("path", "/")
             val path = when {
                 rawPath.isBlank() -> "/"
                 rawPath.startsWith("/") -> rawPath
@@ -149,6 +151,6 @@ internal object V2RayPingTester {
         error("No WS server on port 80 or 443")
     }
 
-    private val ALLOWED_PORTS = setOf(80, 443)
+    private class WsHttpException(message: String) : Exception(message)\n\n    private val ALLOWED_PORTS = setOf(80, 443)
     private const val TIMEOUT_MS = 3500
 }
