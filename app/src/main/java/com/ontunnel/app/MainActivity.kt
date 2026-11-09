@@ -399,6 +399,18 @@ internal fun ONTunnelApp(
                             serverName = servers.firstOrNull { it.id == selectedId }?.name,
                             onClick = ::toggleConnect
                         )
+                        // Fixed section title, outside the scrolling server list.
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Servers", color = TextMain, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.width(8.dp))
+                            Box(
+                                Modifier.clip(RoundedCornerShape(10.dp)).background(SurfaceHigh)
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) { Text("${servers.size}", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                        }
                         LazyColumn(
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -409,20 +421,6 @@ internal fun ONTunnelApp(
                         }
                         if (error != null) {
                             item { ErrorCard(error, onDismissError) }
-                        }
-                        item {
-                            Row(
-                                Modifier.fillMaxWidth().padding(top = 8.dp, start = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Servers", color = TextMain, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                Spacer(Modifier.width(8.dp))
-                                Box(
-                                    Modifier.clip(RoundedCornerShape(10.dp)).background(SurfaceHigh)
-                                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                                ) { Text("${servers.size}", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                                Spacer(Modifier.weight(1f))
-                            }
                         }
                         if (servers.isEmpty()) {
                             item {
