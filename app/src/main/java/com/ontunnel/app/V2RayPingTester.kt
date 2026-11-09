@@ -46,21 +46,21 @@ internal object V2RayPingTester {
                         val nonce = ByteArray(16).also { SecureRandom().nextBytes(it) }
                         val key = Base64.encodeToString(nonce, Base64.NO_WRAP)
                         val request = buildString {
-                            append("GET ${target.path} HTTP/1.1\\r\\n")
-                            append("Host: ${target.wsHost}\\r\\n")
-                            append("Upgrade: websocket\\r\\n")
-                            append("Connection: Upgrade\\r\\n")
-                            append("Sec-WebSocket-Key: $key\\r\\n")
-                            append("Sec-WebSocket-Version: 13\\r\\n")
+                            append("GET ${target.path} HTTP/1.1\r\n")
+                            append("Host: ${target.wsHost}\r\n")
+                            append("Upgrade: websocket\r\n")
+                            append("Connection: Upgrade\r\n")
+                            append("Sec-WebSocket-Key: $key\r\n")
+                            append("Sec-WebSocket-Version: 13\r\n")
                             target.extraHeaders.forEach { (name, value) ->
                                 if (!name.equals("Host", true) &&
                                     !name.equals("Upgrade", true) &&
                                     !name.equals("Connection", true) &&
                                     !name.equals("Sec-WebSocket-Key", true) &&
                                     !name.equals("Sec-WebSocket-Version", true)
-                                ) append("$name: $value\\r\\n")
+                                ) append("$name: $value\r\n")
                             }
-                            append("\\r\\n")
+                            append("\r\n")
                         }
                         socket.getOutputStream().write(request.toByteArray(Charsets.US_ASCII))
                         socket.getOutputStream().flush()
@@ -131,8 +131,8 @@ internal object V2RayPingTester {
                 while (keys.hasNext()) {
                     val name = keys.next()
                     val value = headers.optString(name)
-                    if (value.isNotBlank() && !name.contains('\\r') && !name.contains('\\n') &&
-                        !value.contains('\\r') && !value.contains('\\n')
+                    if (value.isNotBlank() && !name.contains('\r') && !name.contains('\n') &&
+                        !value.contains('\r') && !value.contains('\n')
                     ) extraHeaders[name] = value
                 }
             }
