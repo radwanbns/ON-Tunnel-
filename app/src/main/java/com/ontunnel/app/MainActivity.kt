@@ -2,6 +2,7 @@ package com.ontunnel.app
 
 import android.Manifest
 import android.app.Activity
+import android.app.DownloadManager
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.ClipData
@@ -14,6 +15,7 @@ import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.util.Base64
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -69,6 +71,8 @@ class MainActivity : ComponentActivity() {
     private var pendingConfig: String? = null
     private var status by mutableStateOf(if (ONTunnelVpnService.running) VpnStatus.Connected else VpnStatus.Disconnected)
     private var errorMessage by mutableStateOf<String?>(null)
+    private var availableAppUpdate by mutableStateOf<AppUpdateInfo?>(null)
+    private var updateDownloadId: Long = -1L
 
     private val vpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) pendingConfig?.let(::startVpn)
@@ -90,6 +94,58 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val updateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val completedId = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) ?: -1L
+            if (completedId != updateDownloadId) return
+            val manager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+            val query = DownloadManager.Query().setFilterById(completedId)
+            manager.query(query).use { cursor ->
+                if (cursor.moveToFirst() &&
+                    cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) == DownloadManager.STATUS_SUCCESSFUL
+                ) {
+                    getSharedPreferences("app_update", MODE_PRIVATE).edit()
+                        .putBoolean("pending_install", true).apply()
+                    installDownloadedUpdate()
+                } else {
+                    Toast.makeText(this@MainActivity, "Update download failed", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun installDownloadedUpdate() {
+        val prefs = getSharedPreferences("app_update", MODE_PRIVATE)
+        if (!prefs.getBoolean("pending_install", false)) return
+        if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+            startActivity(
+                Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:$packageName"))
+            )
+            Toast.makeText(this, "Allow ON Tunnel to install updates, then return here", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (AppUpdater.installDownloaded(this)) {
+            prefs.edit().putBoolean("pending_install", false).apply()
+        }
+    }
+
+    private fun startAppUpdateDownload(info: AppUpdateInfo) {
+        try {
+            val request = DownloadManager.Request(Uri.parse(info.apkUrl))
+                .setTitle("ON Tunnel update ${info.versionName}")
+                .setDescription("Downloading application update")
+                .setMimeType("application/vnd.android.package-archive")
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, "ON-Tunnel-update.apk")
+            updateDownloadId = (getSystemService(DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+            availableAppUpdate = null
+            Toast.makeText(this, "Downloading ON Tunnel update...", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Could not start update: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private var tamperDetected by mutableStateOf(false)
 
     override fun onResume() {
@@ -100,6 +156,7 @@ class MainActivity : ComponentActivity() {
             android.os.Process.killProcess(android.os.Process.myPid())
             return
         }
+        installDownloadedUpdate()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -115,6 +172,14 @@ class MainActivity : ComponentActivity() {
             this, stateReceiver, IntentFilter(ONTunnelVpnService.ACTION_STATE),
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
+        ContextCompat.registerReceiver(
+            this, updateReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        Thread {
+            val update = AppUpdater.checkForUpdate(this)
+            if (update != null) runOnUiThread { availableAppUpdate = update }
+        }.start()
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -127,7 +192,9 @@ class MainActivity : ComponentActivity() {
                 tampered = tamperDetected,
                 onDismissError = { errorMessage = null },
                 onConnect = ::connect,
-                onDisconnect = ::disconnect
+                onDisconnect = ::disconnect,
+                appUpdate = availableAppUpdate,
+                onDownloadAppUpdate = ::startAppUpdateDownload
             )
         }
     }
@@ -154,6 +221,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         try { unregisterReceiver(stateReceiver) } catch (_: Exception) {}
+        try { unregisterReceiver(updateReceiver) } catch (_: Exception) {}
         super.onDestroy()
     }
 }
@@ -176,7 +244,9 @@ internal fun ONTunnelApp(
     tampered: Boolean,
     onDismissError: () -> Unit,
     onConnect: (String) -> Unit,
-    onDisconnect: () -> Unit
+    onDisconnect: () -> Unit,
+    appUpdate: AppUpdateInfo?,
+    onDownloadAppUpdate: (AppUpdateInfo) -> Unit
 ) {
     val context = LocalContext.current
     val store = remember { ServerStore(context) }
@@ -468,6 +538,26 @@ internal fun ONTunnelApp(
                         }
                     }
                 }
+            }
+
+            appUpdate?.let { update ->
+                AlertDialog(
+                    onDismissRequest = { },
+                    containerColor = SurfaceC,
+                    title = { Text("ON Tunnel update available", fontWeight = FontWeight.Bold) },
+                    text = {
+                        Text(
+                            "Version ${update.versionName} is available. Download and install it now?",
+                            color = TextMuted
+                        )
+                    },
+                    confirmButton = {
+                        Button(onClick = { onDownloadAppUpdate(update) }) {
+                            Text("Download and install")
+                        }
+                    },
+                    dismissButton = { TextButton(onClick = { /* Check again on next launch */ }) { Text("Later") } }
+                )
             }
 
             // ── Dialogs ────────────────────────────────────────────────
