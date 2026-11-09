@@ -29,7 +29,6 @@ internal object V2RayPingTester {
     fun test(config: String): String {
         val target = runCatching { endpoint(config) }.getOrElse { return "WS ONLY (80/443)" }
         return try {
-            var elapsed = 0L
             val response = measureTimeMillis {
                 Socket().use { raw ->
                     raw.connect(InetSocketAddress(target.host, target.port), TIMEOUT_MS)
@@ -78,8 +77,7 @@ internal object V2RayPingTester {
                     }
                 }
             }
-            elapsed = response
-            "${target.port} • ${elapsed.coerceAtLeast(1)} ms"
+            "${target.port} • ${response.coerceAtLeast(1)} ms"
         } catch (_: java.net.SocketTimeoutException) {
             "${target.port} • TIMEOUT"
         } catch (_: java.net.UnknownHostException) {
