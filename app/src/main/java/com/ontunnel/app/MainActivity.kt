@@ -54,7 +54,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.Socket
 
 /**
  * Hardcoded subscription URL – NEVER shown in the UI.
