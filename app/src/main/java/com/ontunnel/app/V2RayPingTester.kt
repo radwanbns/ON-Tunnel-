@@ -24,6 +24,16 @@ internal object V2RayPingTester {
     fun isSupported(config: String): Boolean = runCatching { endpoint(config) }.isSuccess
 
     fun test(config: String): String {
+        val first = testOnce(config)
+        if (first.endsWith("ms") || first.contains("HTTP ")) return first
+        // Mobile networks and Cloudflare edges can occasionally drop the first handshake.
+        Thread.sleep(RETRY_DELAY_MS)
+        val second = testOnce(config)
+        if (second.endsWith("ms")) return second
+        return second
+    }
+
+    private fun testOnce(config: String): String {
         val target = runCatching { endpoint(config) }.getOrElse { return "WS ONLY (80/443)" }
         return try {
             val elapsed = measureTimeMillis {
@@ -158,5 +168,6 @@ internal object V2RayPingTester {
 
     private class WsHttpException(message: String) : Exception(message)
     private val ALLOWED_PORTS = setOf(80, 443)
-    private const val TIMEOUT_MS = 5000
+    private const val TIMEOUT_MS = 8000
+    private const val RETRY_DELAY_MS = 500
 }
