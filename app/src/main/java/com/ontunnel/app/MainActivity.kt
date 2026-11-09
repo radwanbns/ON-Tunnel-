@@ -422,20 +422,6 @@ internal fun ONTunnelApp(
                                         .padding(horizontal = 8.dp, vertical = 2.dp)
                                 ) { Text("${servers.size}", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                                 Spacer(Modifier.weight(1f))
-                                val pingableCount = servers.count { V2RayPingTester.isSupported(it.config) }
-                                if (pingableCount > 0) {
-                                    OutlinedButton(
-                                        onClick = ::testAllPings,
-                                        enabled = pingRunning.isEmpty(),
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                        modifier = Modifier.height(34.dp)
-                                    ) {
-                                        if (pingRunning.isNotEmpty()) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-                                        else Icon(Icons.Default.Speed, null, modifier = Modifier.size(15.dp))
-                                        Spacer(Modifier.width(5.dp))
-                                        Text(if (pingRunning.isNotEmpty()) "TESTING" else "TEST ALL", fontSize = 11.sp)
-                                    }
-                                }
                             }
                         }
                         if (servers.isEmpty()) {
