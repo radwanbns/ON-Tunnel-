@@ -32,6 +32,10 @@
 -dontwarn go.**
 -keep class com.ontunnel.app.NativeIntegrity { *; }
 
+# OpenVPN for Android remote API (AIDL stubs/parcelable must keep their binder descriptors)
+-keep class de.blinkt.openvpn.api.** { *; }
+-dontwarn de.blinkt.openvpn.api.**
+
 # ── Android framework entry points R8 cannot infer on its own ───────────
 -keep public class com.ontunnel.app.MainActivity
 -keep public class com.ontunnel.app.ONTunnelVpnService
