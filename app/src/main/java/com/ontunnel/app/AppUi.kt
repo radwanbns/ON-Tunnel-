@@ -118,6 +118,12 @@ internal fun ONTunnelApp(
     var ovpnEditing by remember { mutableStateOf<OvpnEditorTarget?>(null) }
     var jsonEditing by remember { mutableStateOf<ServerEntry?>(null) }
 
+    // 0 = Home (Connect), 1 = Servers, 2 = Settings
+    var selectedTab by rememberSaveable { mutableStateOf(0) }
+    var showAutoSelectSheet by remember { mutableStateOf(false) }
+    var dnsMode by remember { mutableStateOf(store.dnsMode) }
+    var customDns by remember { mutableStateOf(store.customDns) }
+
     var themeMode by remember { mutableStateOf(store.themeMode) }
     val systemDark = isSystemInDarkTheme()
     val dark = when (themeMode) { "light" -> false; "dark" -> true; else -> systemDark }
@@ -140,6 +146,22 @@ internal fun ONTunnelApp(
     fun select(id: String) {
         selectedId = id
         store.selectedId = id
+    }
+
+    fun selectRandom() {
+        if (servers.isEmpty()) { message("No servers available"); return }
+        val pick = servers.random()
+        select(pick.id)
+        message("Random: ${pick.name}")
+    }
+
+    fun selectAuto() {
+        if (servers.isEmpty()) { message("No servers available"); return }
+        // Prefer locked (subscription) servers, otherwise any
+        val pool = servers.filter { it.locked }.ifEmpty { servers }
+        val pick = pool.random()
+        select(pick.id)
+        message("Auto selected: ${pick.name}")
     }
 
     fun copyText(label: String, text: String) {
@@ -304,14 +326,53 @@ internal fun ONTunnelApp(
                         containerColor = Color.Transparent,
                         snackbarHost = { SnackbarHost(snackbar) },
                         floatingActionButton = {
-                            ExtendedFloatingActionButton(
-                                onClick = { showAddSheet = true },
-                                containerColor = Accent,
-                                contentColor = OnHero
-                            ) {
-                                Icon(Icons.Default.Add, null)
-                                Spacer(Modifier.width(8.dp))
-                                Text("Add server", fontWeight = FontWeight.Bold)
+                            if (selectedTab == 1) {
+                                ExtendedFloatingActionButton(
+                                    onClick = { showAddSheet = true },
+                                    containerColor = Accent,
+                                    contentColor = OnHero
+                                ) {
+                                    Icon(Icons.Default.Add, null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Add server", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        },
+                        bottomBar = {
+                            NavigationBar(containerColor = SurfaceC) {
+                                NavigationBarItem(
+                                    selected = selectedTab == 0,
+                                    onClick = { selectedTab = 0 },
+                                    icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
+                                    label = { Text("Connect") },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = Accent,
+                                        selectedTextColor = Accent,
+                                        indicatorColor = Accent.copy(alpha = 0.18f)
+                                    )
+                                )
+                                NavigationBarItem(
+                                    selected = selectedTab == 1,
+                                    onClick = { selectedTab = 1 },
+                                    icon = { Icon(Icons.Default.Dns, contentDescription = "Servers") },
+                                    label = { Text("Servers") },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = Accent,
+                                        selectedTextColor = Accent,
+                                        indicatorColor = Accent.copy(alpha = 0.18f)
+                                    )
+                                )
+                                NavigationBarItem(
+                                    selected = selectedTab == 2,
+                                    onClick = { selectedTab = 2 },
+                                    icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
+                                    label = { Text("Settings") },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = Accent,
+                                        selectedTextColor = Accent,
+                                        indicatorColor = Accent.copy(alpha = 0.18f)
+                                    )
+                                )
                             }
                         },
                         topBar = {
@@ -373,32 +434,69 @@ internal fun ONTunnelApp(
                         }
                     ) { padding ->
                         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-                            // The connection control stays outside the scrolling list.
                             val selected = servers.firstOrNull { it.id == selectedId }
-                            ConnectHero(
-                                status = status,
-                                detail = statusDetail,
-                                serverName = selected?.name,
-                                serverBadge = selected?.let { badgeFor(it) },
-                                busyLocked = status == VpnStatus.Disconnecting,
-                                onClick = ::toggleConnect
-                            )
-                            Row(
-                                Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Servers", color = TextMain, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                Spacer(Modifier.width(8.dp))
-                                Box(
-                                    Modifier.clip(RoundedCornerShape(10.dp)).background(SurfaceHigh)
-                                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                                ) { Text("${servers.size}", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                            }
-                            LazyColumn(
-                                modifier = Modifier.weight(1f).fillMaxWidth(),
-                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
+
+                            when (selectedTab) {
+                                0 -> { // ── HOME / CONNECT ──────────────────────────────
+                                    ConnectHero(
+                                        status = status,
+                                        detail = statusDetail,
+                                        serverName = selected?.name,
+                                        serverBadge = selected?.let { badgeFor(it) },
+                                        busyLocked = status == VpnStatus.Disconnecting,
+                                        onClick = ::toggleConnect
+                                    )
+                                    // Auto Select + Random
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Button(
+                                            onClick = { showAutoSelectSheet = true },
+                                            modifier = Modifier.weight(1f).height(48.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = SurfaceHigh, contentColor = TextMain),
+                                            shape = RoundedCornerShape(14.dp)
+                                        ) {
+                                            Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(18.dp), tint = Accent)
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("Auto Select", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                        }
+                                        Button(
+                                            onClick = { selectRandom() },
+                                            modifier = Modifier.weight(1f).height(48.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = SurfaceHigh, contentColor = TextMain),
+                                            shape = RoundedCornerShape(14.dp)
+                                        ) {
+                                            Icon(Icons.Default.Shuffle, null, modifier = Modifier.size(18.dp), tint = Accent)
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("Random", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                        }
+                                    }
+                                    if (tampered) {
+                                        ErrorCard("App signature does not match the official build – connection disabled for your safety.", {})
+                                    }
+                                    if (error != null) {
+                                        ErrorCard(error, onDismissError)
+                                    }
+                                    Spacer(Modifier.weight(1f))
+                                }
+                                1 -> { // ── SERVERS ────────────────────────────────────
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Servers", color = TextMain, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                        Spacer(Modifier.width(8.dp))
+                                        Box(
+                                            Modifier.clip(RoundedCornerShape(10.dp)).background(SurfaceHigh)
+                                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                                        ) { Text("${servers.size}", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                                    }
+                                    LazyColumn(
+                                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
                                 if (tampered) {
                                     item { ErrorCard("App signature does not match the official build – connection disabled for your safety.", {}) }
                                 }
@@ -452,7 +550,94 @@ internal fun ONTunnelApp(
                                         )
                                     }
                                 }
+                            } // end LazyColumn
+                                } // end Servers branch (1)
+                                2 -> { // ── SETTINGS ───────────────────────────────────
+                                    SettingsPage(
+                                        themeMode = themeMode,
+                                        onThemeChange = { themeMode = it; store.themeMode = it },
+                                        dnsMode = dnsMode,
+                                        onDnsModeChange = { dnsMode = it; store.dnsMode = it },
+                                        customDns = customDns,
+                                        onCustomDnsChange = { customDns = it; store.customDns = it },
+                                        hwid = store.hwid,
+                                        isUpdating = isUpdating,
+                                        onCheckUpdate = { runUpdate(auto = false) },
+                                        onOpenTelegram = { openTelegram(context) },
+                                        onCopyHwid = { copyText("HWID", store.hwid) },
+                                        onShareInternet = {
+                                            try {
+                                                context.startActivity(Intent("android.settings.TETHER_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                                            } catch (_: Exception) {
+                                                try {
+                                                    context.startActivity(Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                                                } catch (_: Exception) {
+                                                    message("Could not open hotspot settings")
+                                                }
+                                            }
+                                        },
+                                        onDeleteAdded = { confirmDeleteAll = true }
+                                    )
+                                } // end Settings
+                            } // end when
+                        } // end Column
+                    } // end Scaffold padding
+                } // end Box
+            } // end else (no editor)
+
+            // ── Auto-select sheet ──────────────────────────
+            if (showAutoSelectSheet) {
+                ModalBottomSheet(
+                    onDismissRequest = { showAutoSelectSheet = false },
+                    containerColor = SurfaceC,
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(bottom = 32.dp)) {
+                        Text(
+                            "Select a server",
+                            color = TextMain, fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+                        )
+                        if (servers.isEmpty()) {
+                            Text("No servers available. Update subscription or add one.", color = TextMuted, modifier = Modifier.padding(20.dp))
+                        } else {
+                            LazyColumn(
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.heightIn(max = 420.dp)
+                            ) {
+                                items(servers, key = { it.id }) { entry ->
+                                    ServerCard(
+                                        entry = entry,
+                                        badge = remember(entry.id, entry.config) { badgeFor(entry) },
+                                        selected = entry.id == selectedId,
+                                        onSelect = {
+                                            select(entry.id)
+                                            showAutoSelectSheet = false
+                                            message("Selected: ${entry.name}")
+                                        },
+                                        onEdit = { showAutoSelectSheet = false; openEditor(entry) },
+                                        onCopyUri = {},
+                                        onCopyJson = {},
+                                        onDuplicate = {},
+                                        onDelete = {}
+                                    )
+                                }
                             }
+                        }
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { selectAuto(); showAutoSelectSheet = false },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Auto pick") }
+                            Button(
+                                onClick = { selectRandom(); showAutoSelectSheet = false },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = Accent)
+                            ) { Text("Random") }
                         }
                     }
                 }
@@ -617,6 +802,162 @@ internal fun ONTunnelApp(
 // ═══════════════════════════════════════════════════════════════════════
 //  Components
 // ═══════════════════════════════════════════════════════════════════════
+
+
+@Composable
+private fun SettingsPage(
+    themeMode: String,
+    onThemeChange: (String) -> Unit,
+    dnsMode: String,
+    onDnsModeChange: (String) -> Unit,
+    customDns: String,
+    onCustomDnsChange: (String) -> Unit,
+    hwid: String,
+    isUpdating: Boolean,
+    onCheckUpdate: () -> Unit,
+    onOpenTelegram: () -> Unit,
+    onCopyHwid: () -> Unit,
+    onShareInternet: () -> Unit,
+    onDeleteAdded: () -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Text("Settings", color = TextMain, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold,
+                modifier = Modifier.padding(bottom = 4.dp, top = 4.dp))
+        }
+
+        // Theme
+        item {
+            SettingsCard(title = "Appearance") {
+                val labels = listOf("Auto (System)", "Light", "Dark")
+                val values = listOf("system", "light", "dark")
+                values.forEachIndexed { i, v ->
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .clickable { onThemeChange(v) }
+                            .padding(vertical = 10.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = themeMode == v, onClick = { onThemeChange(v) },
+                            colors = RadioButtonDefaults.colors(selectedColor = Accent))
+                        Spacer(Modifier.width(8.dp))
+                        Text(labels[i], color = TextMain, fontSize = 15.sp)
+                    }
+                }
+            }
+        }
+
+        // DNS
+        item {
+            SettingsCard(title = "DNS") {
+                val options = listOf(
+                    "system" to "System default",
+                    "cloudflare" to "Cloudflare (1.1.1.1)",
+                    "google" to "Google (8.8.8.8)",
+                    "adguard" to "AdGuard (94.140.14.14)",
+                    "custom" to "Custom"
+                )
+                options.forEach { (v, label) ->
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .clickable { onDnsModeChange(v) }
+                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = dnsMode == v, onClick = { onDnsModeChange(v) },
+                            colors = RadioButtonDefaults.colors(selectedColor = Accent))
+                        Spacer(Modifier.width(8.dp))
+                        Text(label, color = TextMain, fontSize = 15.sp)
+                    }
+                }
+                if (dnsMode == "custom") {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = customDns,
+                        onValueChange = onCustomDnsChange,
+                        label = { Text("Custom DNS (IP)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+
+        // HWID
+        item {
+            SettingsCard(title = "Device HWID") {
+                Text(hwid, color = Accent, fontSize = 15.sp, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(vertical = 4.dp))
+                Text("Unique ID for this phone. Used for identification.", color = TextMuted, fontSize = 12.sp)
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = onCopyHwid, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Copy HWID")
+                }
+            }
+        }
+
+        // Share internet
+        item {
+            SettingsCard(title = "Share phone internet") {
+                Text("Open system hotspot / tethering settings so other devices can use this phone's connection.", color = TextMuted, fontSize = 13.sp)
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    onClick = onShareInternet,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Accent)
+                ) {
+                    Icon(Icons.Default.WifiTethering, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Open Hotspot Settings")
+                }
+            }
+        }
+
+        // Actions
+        item {
+            SettingsCard(title = "Actions") {
+                SettingsActionRow(Icons.Default.Refresh, if (isUpdating) "Checking…" else "Check for updates", onCheckUpdate, enabled = !isUpdating)
+                SettingsActionRow(Icons.AutoMirrored.Filled.Send, "Telegram channel", onOpenTelegram)
+                SettingsActionRow(Icons.Default.Delete, "Delete added servers", onDeleteAdded, danger = true)
+            }
+        }
+
+        item {
+            Text("ON Tunnel · Professional edition", color = TextMuted, fontSize = 12.sp,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), textAlign = TextAlign.Center)
+        }
+    }
+}
+
+@Composable
+private fun SettingsCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(SurfaceC).padding(16.dp)
+    ) {
+        Text(title, color = TextMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(bottom = 8.dp))
+        content()
+    }
+}
+
+@Composable
+private fun SettingsActionRow(icon: ImageVector, label: String, onClick: () -> Unit, enabled: Boolean = true, danger: Boolean = false) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 12.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = if (danger) RedErr else Accent, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(14.dp))
+        Text(label, color = if (danger) RedErr else TextMain, fontSize = 15.sp)
+    }
+}
 
 private fun formatElapsed(totalSeconds: Long): String {
     val h = totalSeconds / 3600
