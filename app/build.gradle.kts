@@ -13,11 +13,22 @@ android {
     ndkVersion = "27.2.12479018"
 
     defaultConfig {
-        applicationId = "com.ontunnel.app"
-        minSdk = 24
-        targetSdk = 35
-        versionCode = 10
-        versionName = "1.8"
+    applicationId = "com.ontunnel.app"
+    minSdk = 24
+    targetSdk = 35
+    versionCode = 10
+    versionName = "1.8"
+
+    ndk {
+        abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+    }
+
+    externalNativeBuild {
+        cmake {
+            cppFlags += "-std=c++17"
+        }
+    }
+}
 
         externalNativeBuild {
             cmake {
