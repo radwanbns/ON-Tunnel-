@@ -21,9 +21,13 @@ object OvpnMode {
         else -> DIRECT
     }
 
-    /** Ready-made payload (HTTP upgrade, raw OpenVPN stream afterwards). */
+    /** WebSocket-style upgrade then raw OpenVPN (common injector template). */
     const val PAYLOAD_TEMPLATE =
         "GET / HTTP/1.1[crlf]Host: [host][crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf][crlf]"
+
+    /** Classic HTTP CONNECT through a proxy – works with any target port. */
+    const val CONNECT_TEMPLATE =
+        "CONNECT [host_port] HTTP/1.1[crlf]Host: [host_port][crlf]Proxy-Connection: Keep-Alive[crlf]User-Agent: [ua][crlf][crlf]"
 }
 
 /**
@@ -63,7 +67,8 @@ data class OvpnProfile(
         if (usesRelay) {
             if (r.host.isBlank() && serverOverride.isBlank() && proxyHost.isBlank()) return "Server address is missing"
             if (proxyHost.isNotBlank() && proxyPort !in 1..65535) return "Invalid proxy port"
-            if (mode == OvpnMode.PAYLOAD && payload.isBlank()) return "Payload is empty"
+            // Empty payload is allowed: TransportProxy auto-builds CONNECT when a proxy is set,
+            // or a WebSocket-style GET otherwise.
         }
         return null
     }

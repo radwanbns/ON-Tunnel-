@@ -389,15 +389,6 @@ internal fun ONTunnelApp(
                                         IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "Menu") }
                                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                                             DropdownMenuItem(
-                                                text = { Text(if (isUpdating) "Checking..." else "Check update") },
-                                                leadingIcon = {
-                                                    if (isUpdating) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                                                    else Icon(Icons.Default.Refresh, null)
-                                                },
-                                                enabled = !isUpdating,
-                                                onClick = { menuOpen = false; runUpdate(auto = false) }
-                                            )
-                                            DropdownMenuItem(
                                                 text = {
                                                     Text(
                                                         when (themeMode) {
@@ -412,11 +403,6 @@ internal fun ONTunnelApp(
                                                     themeMode = when (themeMode) { "system" -> "light"; "light" -> "dark"; else -> "system" }
                                                     store.themeMode = themeMode
                                                 }
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text("Delete added servers") },
-                                                leadingIcon = { Icon(Icons.Default.Delete, null, tint = RedErr) },
-                                                onClick = { menuOpen = false; confirmDeleteAll = true }
                                             )
                                         }
                                     }
@@ -559,24 +545,7 @@ internal fun ONTunnelApp(
                                         dnsMode = dnsMode,
                                         onDnsModeChange = { dnsMode = it; store.dnsMode = it },
                                         customDns = customDns,
-                                        onCustomDnsChange = { customDns = it; store.customDns = it },
-                                        hwid = store.hwid,
-                                        isUpdating = isUpdating,
-                                        onCheckUpdate = { runUpdate(auto = false) },
-                                        onOpenTelegram = { openTelegram(context) },
-                                        onCopyHwid = { copyText("HWID", store.hwid) },
-                                        onShareInternet = {
-                                            try {
-                                                context.startActivity(Intent("android.settings.TETHER_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                                            } catch (_: Exception) {
-                                                try {
-                                                    context.startActivity(Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                                                } catch (_: Exception) {
-                                                    message("Could not open hotspot settings")
-                                                }
-                                            }
-                                        },
-                                        onDeleteAdded = { confirmDeleteAll = true }
+                                        onCustomDnsChange = { customDns = it; store.customDns = it }
                                     )
                                 } // end Settings
                             } // end when
@@ -811,14 +780,7 @@ private fun SettingsPage(
     dnsMode: String,
     onDnsModeChange: (String) -> Unit,
     customDns: String,
-    onCustomDnsChange: (String) -> Unit,
-    hwid: String,
-    isUpdating: Boolean,
-    onCheckUpdate: () -> Unit,
-    onOpenTelegram: () -> Unit,
-    onCopyHwid: () -> Unit,
-    onShareInternet: () -> Unit,
-    onDeleteAdded: () -> Unit
+    onCustomDnsChange: (String) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -826,24 +788,33 @@ private fun SettingsPage(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("Settings", color = TextMain, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier.padding(bottom = 4.dp, top = 4.dp))
+            Text(
+                "Settings",
+                color = TextMain,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.ExtraBold,
+                modifier = Modifier.padding(bottom = 4.dp, top = 4.dp)
+            )
         }
 
-        // Theme
         item {
             SettingsCard(title = "Appearance") {
                 val labels = listOf("Auto (System)", "Light", "Dark")
                 val values = listOf("system", "light", "dark")
                 values.forEachIndexed { i, v ->
                     Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
                             .clickable { onThemeChange(v) }
                             .padding(vertical = 10.dp, horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        RadioButton(selected = themeMode == v, onClick = { onThemeChange(v) },
-                            colors = RadioButtonDefaults.colors(selectedColor = Accent))
+                        RadioButton(
+                            selected = themeMode == v,
+                            onClick = { onThemeChange(v) },
+                            colors = RadioButtonDefaults.colors(selectedColor = Accent)
+                        )
                         Spacer(Modifier.width(8.dp))
                         Text(labels[i], color = TextMain, fontSize = 15.sp)
                     }
@@ -851,7 +822,6 @@ private fun SettingsPage(
             }
         }
 
-        // DNS
         item {
             SettingsCard(title = "DNS") {
                 val options = listOf(
@@ -863,13 +833,18 @@ private fun SettingsPage(
                 )
                 options.forEach { (v, label) ->
                     Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
                             .clickable { onDnsModeChange(v) }
                             .padding(vertical = 8.dp, horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        RadioButton(selected = dnsMode == v, onClick = { onDnsModeChange(v) },
-                            colors = RadioButtonDefaults.colors(selectedColor = Accent))
+                        RadioButton(
+                            selected = dnsMode == v,
+                            onClick = { onDnsModeChange(v) },
+                            colors = RadioButtonDefaults.colors(selectedColor = Accent)
+                        )
                         Spacer(Modifier.width(8.dp))
                         Text(label, color = TextMain, fontSize = 15.sp)
                     }
@@ -887,50 +862,14 @@ private fun SettingsPage(
             }
         }
 
-        // HWID
         item {
-            SettingsCard(title = "Device HWID") {
-                Text(hwid, color = Accent, fontSize = 15.sp, fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(vertical = 4.dp))
-                Text("Unique ID for this phone. Used for identification.", color = TextMuted, fontSize = 12.sp)
-                Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = onCopyHwid, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Copy HWID")
-                }
-            }
-        }
-
-        // Share internet
-        item {
-            SettingsCard(title = "Share phone internet") {
-                Text("Open system hotspot / tethering settings so other devices can use this phone's connection.", color = TextMuted, fontSize = 13.sp)
-                Spacer(Modifier.height(10.dp))
-                Button(
-                    onClick = onShareInternet,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Accent)
-                ) {
-                    Icon(Icons.Default.WifiTethering, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Open Hotspot Settings")
-                }
-            }
-        }
-
-        // Actions
-        item {
-            SettingsCard(title = "Actions") {
-                SettingsActionRow(Icons.Default.Refresh, if (isUpdating) "Checking…" else "Check for updates", onCheckUpdate, enabled = !isUpdating)
-                SettingsActionRow(Icons.AutoMirrored.Filled.Send, "Telegram channel", onOpenTelegram)
-                SettingsActionRow(Icons.Default.Delete, "Delete added servers", onDeleteAdded, danger = true)
-            }
-        }
-
-        item {
-            Text("ON Tunnel · Professional edition", color = TextMuted, fontSize = 12.sp,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), textAlign = TextAlign.Center)
+            Text(
+                "ON Tunnel",
+                color = TextMuted,
+                fontSize = 12.sp,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                textAlign = TextAlign.Center
+            )
         }
     }
 }
@@ -940,22 +879,14 @@ private fun SettingsCard(title: String, content: @Composable ColumnScope.() -> U
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(SurfaceC).padding(16.dp)
     ) {
-        Text(title, color = TextMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(bottom = 8.dp))
+        Text(
+            title,
+            color = TextMuted,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
         content()
-    }
-}
-
-@Composable
-private fun SettingsActionRow(icon: ImageVector, label: String, onClick: () -> Unit, enabled: Boolean = true, danger: Boolean = false) {
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(enabled = enabled, onClick = onClick)
-            .padding(vertical = 12.dp, horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, null, tint = if (danger) RedErr else Accent, modifier = Modifier.size(22.dp))
-        Spacer(Modifier.width(14.dp))
-        Text(label, color = if (danger) RedErr else TextMain, fontSize = 15.sp)
     }
 }
 

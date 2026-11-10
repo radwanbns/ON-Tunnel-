@@ -116,10 +116,13 @@ internal fun OvpnEditorScreen(
             OvpnSection("Transport")
             Choice("Connection type", OvpnMode.toLabel(p.mode), OvpnMode.labels) { label ->
                 val mode = OvpnMode.fromLabel(label)
-                p = p.copy(
-                    mode = mode,
-                    payload = if (mode == OvpnMode.PAYLOAD && p.payload.isBlank()) OvpnMode.PAYLOAD_TEMPLATE else p.payload
-                )
+                val autoPayload = when {
+                    mode != OvpnMode.PAYLOAD -> p.payload
+                    p.payload.isNotBlank() -> p.payload
+                    p.proxyHost.isNotBlank() -> OvpnMode.CONNECT_TEMPLATE
+                    else -> OvpnMode.PAYLOAD_TEMPLATE
+                }
+                p = p.copy(mode = mode, payload = autoPayload)
             }
 
             if (p.usesRelay) {
@@ -146,7 +149,15 @@ internal fun OvpnEditorScreen(
                         textStyle = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp),
                         modifier = Modifier.fillMaxWidth()
                     )
-                    TextButton(onClick = { p = p.copy(payload = OvpnMode.PAYLOAD_TEMPLATE) }) { Text("Insert WebSocket-style template") }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { p = p.copy(payload = OvpnMode.CONNECT_TEMPLATE) }) {
+                            Text("CONNECT (proxy)")
+                        }
+                        TextButton(onClick = { p = p.copy(payload = OvpnMode.PAYLOAD_TEMPLATE) }) {
+                            Text("WebSocket-style")
+                        }
+                    }
+                    Hint("For HTTP proxy on any port: set Proxy host/port and use CONNECT template (or leave payload empty – auto CONNECT).")
                     Hint("Tags: [crlf] [cr] [lf] [host] [port] [host_port] [ua] [split] [delay_split]")
                 } else {
                     Field("WebSocket path", p.wsPath, { p = p.copy(wsPath = it) })
