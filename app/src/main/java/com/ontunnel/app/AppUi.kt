@@ -334,11 +334,11 @@ internal fun ONTunnelApp(
                             Column(
                                 Modifier
                                     .fillMaxHeight()
-                                    .width(300.dp)
+                                    .width(280.dp)
                                     .padding(vertical = 12.dp)
                             ) {
                                 Row(
-                                    Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                                    Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(Icons.Default.Shield, null, tint = Accent, modifier = Modifier.size(32.dp))
@@ -351,29 +351,6 @@ internal fun ONTunnelApp(
                                     drawerOpen = false
                                     selectedTab = 1
                                 }
-                                DrawerItem(Icons.Default.Refresh, if (isUpdating) "Checking…" else "Check update") {
-                                    drawerOpen = false
-                                    runUpdate(auto = false)
-                                }
-                                DrawerItem(Icons.Default.BrightnessMedium, when (themeMode) {
-                                    "light" -> "Theme: Light"
-                                    "dark" -> "Theme: Dark"
-                                    else -> "Theme: Auto"
-                                }) {
-                                    themeMode = when (themeMode) { "system" -> "light"; "light" -> "dark"; else -> "system" }
-                                    store.themeMode = themeMode
-                                }
-                                DrawerItem(Icons.Default.Delete, "Delete added servers", danger = true) {
-                                    drawerOpen = false
-                                    confirmDeleteAll = true
-                                }
-                                Spacer(Modifier.weight(1f))
-                                Text(
-                                    "ON Tunnel",
-                                    color = TextMuted,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.padding(20.dp)
-                                )
                             }
                         }
                     }
@@ -494,38 +471,30 @@ internal fun ONTunnelApp(
                                         onCustomDnsChange = { customDns = it; store.customDns = it }
                                     )
                                 } else {
-                                    // Status line
+                                    // Big circular connect button (as before)
+                                    ConnectHero(
+                                        status = status,
+                                        detail = statusDetail,
+                                        serverName = selected?.name,
+                                        serverBadge = selected?.let { badgeFor(it) },
+                                        busyLocked = status == VpnStatus.Disconnecting,
+                                        onClick = ::toggleConnect
+                                    )
                                     Row(
                                         Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = 20.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                            .padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            when (status) {
-                                                VpnStatus.Connected -> "Connected"
-                                                VpnStatus.Connecting -> "Connecting…"
-                                                VpnStatus.Disconnecting -> "Disconnecting…"
-                                                VpnStatus.Disconnected -> "Not connected"
-                                            },
-                                            color = when (status) {
-                                                VpnStatus.Connected -> GreenOk
-                                                VpnStatus.Connecting, VpnStatus.Disconnecting -> Amber
-                                                else -> TextMuted
-                                            },
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                        if (selected != null) {
-                                            Text(
-                                                selected.name,
-                                                color = TextMuted,
-                                                fontSize = 12.sp,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                modifier = Modifier.padding(start = 12.dp)
-                                            )
+                                        Text("Servers", color = TextMain, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                        Spacer(Modifier.width(8.dp))
+                                        Box(
+                                            Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(SurfaceHigh)
+                                                .padding(horizontal = 7.dp, vertical = 1.dp)
+                                        ) {
+                                            Text("${servers.size}", color = Accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                     if (tampered) {
@@ -539,8 +508,8 @@ internal fun ONTunnelApp(
                                     }
                                     LazyColumn(
                                         modifier = Modifier.weight(1f).fillMaxWidth(),
-                                        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 88.dp),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 16.dp),
+                                        verticalArrangement = Arrangement.spacedBy(5.dp)
                                     ) {
                                         if (servers.isEmpty()) {
                                             item {
@@ -549,15 +518,15 @@ internal fun ONTunnelApp(
                                                         .fillMaxWidth()
                                                         .clip(RoundedCornerShape(16.dp))
                                                         .background(SurfaceC)
-                                                        .padding(28.dp),
+                                                        .padding(24.dp),
                                                     horizontalAlignment = Alignment.CenterHorizontally
                                                 ) {
-                                                    Icon(Icons.Default.Dns, null, tint = Accent, modifier = Modifier.size(36.dp))
-                                                    Spacer(Modifier.height(10.dp))
+                                                    Icon(Icons.Default.Dns, null, tint = Accent, modifier = Modifier.size(32.dp))
+                                                    Spacer(Modifier.height(8.dp))
                                                     Text(
                                                         "No servers yet.\nTap + to add, or Check update from the menu.",
                                                         color = TextMuted,
-                                                        fontSize = 14.sp,
+                                                        fontSize = 13.sp,
                                                         textAlign = TextAlign.Center
                                                     )
                                                 }
@@ -1008,10 +977,10 @@ private fun ConnectHero(
     )
 
     Column(
-        Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 10.dp),
+        Modifier.fillMaxWidth().padding(top = 0.dp, bottom = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(Modifier.size(236.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(180.dp), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxSize()) {
                 val maxR = size.minDimension / 2f
                 // static halo
@@ -1029,20 +998,20 @@ private fun ConnectHero(
                 }
             }
             Box(
-                Modifier.size(128.dp)
-                    .shadow(18.dp, CircleShape, ambientColor = color, spotColor = color)
+                Modifier.size(100.dp)
+                    .shadow(14.dp, CircleShape, ambientColor = color, spotColor = color)
                     .clip(CircleShape)
                     .background(Brush.linearGradient(listOf(color, color.copy(alpha = 0.72f))))
                     .clickable(enabled = !busyLocked, onClick = onClick),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.PowerSettingsNew, contentDescription = "Connect", tint = OnHero, modifier = Modifier.size(56.dp))
+                Icon(Icons.Default.PowerSettingsNew, contentDescription = "Connect", tint = OnHero, modifier = Modifier.size(44.dp))
             }
             if (status == VpnStatus.Connecting || status == VpnStatus.Disconnecting) {
-                CircularProgressIndicator(Modifier.size(150.dp), color = color, strokeWidth = 3.dp)
+                CircularProgressIndicator(Modifier.size(118.dp), color = color, strokeWidth = 2.5.dp)
             }
         }
-        Text(label, color = color, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+        Text(label, color = color, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(2.dp))
         val sub = when {
             status == VpnStatus.Connected -> formatElapsed(elapsed)
