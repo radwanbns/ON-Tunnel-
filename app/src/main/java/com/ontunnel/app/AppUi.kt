@@ -428,37 +428,7 @@ internal fun ONTunnelApp(
                                     )
                                 )
                             },
-                            floatingActionButton = {
-                                if (selectedTab == 0) {
-                                    val fabColor = when (status) {
-                                        VpnStatus.Connected -> GreenOk
-                                        VpnStatus.Connecting, VpnStatus.Disconnecting -> Amber
-                                        else -> Accent
-                                    }
-                                    FloatingActionButton(
-                                        onClick = { toggleConnect() },
-                                        containerColor = fabColor,
-                                        contentColor = OnHero,
-                                        shape = CircleShape,
-                                        modifier = Modifier.size(64.dp)
-                                    ) {
-                                        if (connecting) {
-                                            CircularProgressIndicator(
-                                                Modifier.size(28.dp),
-                                                color = OnHero,
-                                                strokeWidth = 3.dp
-                                            )
-                                        } else {
-                                            Icon(
-                                                if (connected) Icons.Default.Stop else Icons.Default.PlayArrow,
-                                                contentDescription = "Connect",
-                                                modifier = Modifier.size(32.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            },
-                            floatingActionButtonPosition = FabPosition.Start
+                            floatingActionButton = { },
                         ) { padding ->
                             Column(Modifier.fillMaxSize().padding(padding)) {
                                 if (selectedTab == 1) {
@@ -507,8 +477,10 @@ internal fun ONTunnelApp(
                                         ErrorCard(error, onDismissError)
                                     }
                                     LazyColumn(
-                                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                                        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 16.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(max = 300.dp),
+                                        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 12.dp),
                                         verticalArrangement = Arrangement.spacedBy(5.dp)
                                     ) {
                                         if (servers.isEmpty()) {
@@ -980,7 +952,7 @@ private fun ConnectHero(
         Modifier.fillMaxWidth().padding(top = 0.dp, bottom = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(Modifier.size(180.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(160.dp), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxSize()) {
                 val maxR = size.minDimension / 2f
                 // static halo
@@ -998,17 +970,17 @@ private fun ConnectHero(
                 }
             }
             Box(
-                Modifier.size(100.dp)
-                    .shadow(14.dp, CircleShape, ambientColor = color, spotColor = color)
+                Modifier.size(88.dp)
+                    .shadow(12.dp, CircleShape, ambientColor = color, spotColor = color)
                     .clip(CircleShape)
                     .background(Brush.linearGradient(listOf(color, color.copy(alpha = 0.72f))))
                     .clickable(enabled = !busyLocked, onClick = onClick),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.PowerSettingsNew, contentDescription = "Connect", tint = OnHero, modifier = Modifier.size(44.dp))
+                Icon(Icons.Default.PowerSettingsNew, contentDescription = "Connect", tint = OnHero, modifier = Modifier.size(40.dp))
             }
             if (status == VpnStatus.Connecting || status == VpnStatus.Disconnecting) {
-                CircularProgressIndicator(Modifier.size(118.dp), color = color, strokeWidth = 2.5.dp)
+                CircularProgressIndicator(Modifier.size(104.dp), color = color, strokeWidth = 2.5.dp)
             }
         }
         Text(label, color = color, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
