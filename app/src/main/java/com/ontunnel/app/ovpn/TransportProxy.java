@@ -106,8 +106,23 @@ public final class TransportProxy {
             sendPayload(upOut, wsKey);
             String status = readHeaders(upIn);
             int code = statusCode(status);
-            boolean ok = cfg.mode == TransportConfig.MODE_WEBSOCKET ? code == 101 : (code == 101 || (code >= 200 && code < 300));
-            if (!ok) throw new IOException("Server rejected the " + (cfg.mode == TransportConfig.MODE_WEBSOCKET ? "WebSocket upgrade" : "payload") + ": " + status);
+            // WebSocket needs 101; HTTP payload / CONNECT accepts 2xx (incl. 200 Connection established) and 101
+            boolean ok = cfg.mode == TransportConfig.MODE_WEBSOCKET
+                    ? (code == 101)
+                    : (code == 101 || (code >= 200 && code < 300));
+            // Also accept non-standard "HTTP/1.x 200 Connection established" already covered by 2xx.
+            // Some broken proxies reply without a proper status line – accept empty-ish 200-like lines.
+            if (!ok && status != null) {
+                String low = status.toLowerCase();
+                if (low.contains("200") && (low.contains("connection established") || low.contains("ok"))) ok = true;
+            }
+            if (!ok) throw new IOException("Server rejected the " +
+                    (cfg.mode == TransportConfig.MODE_WEBSOCKET ? "WebSocket upgrade" : "payload") +
+                    ": " + status + " (code=" + code + ")");
+
+            // Clear read timeout for the long-lived tunnel
+            try { up.setSoTimeout(0); } catch (Exception ignored) { }
+            try { client.setSoTimeout(0); } catch (Exception ignored) { }
 
             if (cfg.mode == TransportConfig.MODE_WEBSOCKET) {
                 relayWebSocket(client, upIn, upOut, up);
@@ -129,7 +144,10 @@ public final class TransportProxy {
     private Socket openUpstream() throws IOException {
         Socket raw = new Socket();
         raw.setTcpNoDelay(true);
-        raw.connect(new InetSocketAddress(dialAddr, cfg.dialPort), 15000);
+        try { raw.setKeepAlive(true); } catch (Exception ignored) { }
+        raw.connect(new InetSocketAddress(dialAddr, cfg.dialPort), 20000);
+        // Handshake read timeout (cleared after successful payload response)
+        try { raw.setSoTimeout(25000); } catch (Exception ignored) { }
         if (!cfg.tls) return raw;
         try {
             SSLContext ctx = SSLContext.getInstance("TLS");
@@ -170,24 +188,41 @@ public final class TransportProxy {
     private void sendPayload(OutputStream out, String wsKey) throws IOException {
         String tpl = cfg.payload == null ? "" : cfg.payload;
         if (tpl.trim().isEmpty()) {
-            if (cfg.mode != TransportConfig.MODE_WEBSOCKET) {
-                tpl = "GET / HTTP/1.1[crlf]Host: [host][crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf][crlf]";
-            } else {
+            if (cfg.mode == TransportConfig.MODE_WEBSOCKET) {
                 String host = !blank(cfg.wsHost) ? cfg.wsHost : (!blank(cfg.sni) ? cfg.sni : cfg.targetHost);
                 String path = blank(cfg.wsPath) ? "/" : (cfg.wsPath.startsWith("/") ? cfg.wsPath : "/" + cfg.wsPath);
                 tpl = "GET " + path + " HTTP/1.1[crlf]Host: " + host + "[crlf]User-Agent: [ua][crlf]"
                         + "Upgrade: websocket[crlf]Connection: Upgrade[crlf]"
                         + "Sec-WebSocket-Key: [ws_key][crlf]Sec-WebSocket-Version: 13[crlf][crlf]";
+            } else if (isHttpProxyDial()) {
+                // Dialing an HTTP proxy: classic CONNECT to the real OpenVPN host:port (any port works).
+                tpl = "CONNECT [host_port] HTTP/1.1[crlf]Host: [host_port][crlf]"
+                        + "Proxy-Connection: Keep-Alive[crlf]Connection: Keep-Alive[crlf]"
+                        + "User-Agent: [ua][crlf][crlf]";
+            } else {
+                // Direct payload to edge/CDN – WebSocket-style upgrade is a common default.
+                tpl = "GET / HTTP/1.1[crlf]Host: [host][crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf][crlf]";
             }
         }
+        // Tags always expand with the *target* OpenVPN server (not the proxy dial address).
         List<PayloadTemplate.Part> parts = PayloadTemplate.expand(tpl, cfg.targetHost, cfg.targetPort, wsKey);
         for (PayloadTemplate.Part p : parts) {
             if (p.delayBeforeMs > 0) {
-                try { Thread.sleep(p.delayBeforeMs); } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IOException("Interrupted"); }
+                try { Thread.sleep(p.delayBeforeMs); } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("Interrupted");
+                }
             }
             out.write(p.data);
             out.flush();
         }
+    }
+
+    /** True when we are dialing a different host/port than the real OpenVPN target (HTTP proxy path). */
+    private boolean isHttpProxyDial() {
+        if (blank(cfg.dialHost) || blank(cfg.targetHost)) return false;
+        if (!cfg.dialHost.equalsIgnoreCase(cfg.targetHost)) return true;
+        return cfg.dialPort != cfg.targetPort;
     }
 
     private static boolean blank(String s) { return s == null || s.trim().isEmpty(); }

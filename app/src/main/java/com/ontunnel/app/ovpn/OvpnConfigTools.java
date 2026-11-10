@@ -22,7 +22,9 @@ public final class OvpnConfigTools {
     private static final Set<String> DROP_WHEN_RELAYED = new HashSet<>(Arrays.asList(
             "remote", "remote-random", "remote-random-hostname", "proto", "proto-force",
             "http-proxy", "http-proxy-option", "http-proxy-retry", "http-proxy-timeout",
-            "socks-proxy", "socks-proxy-retry"));
+            "socks-proxy", "socks-proxy-retry",
+            // UDP-only / conflicting with local TCP relay:
+            "explicit-exit-notify", "fragment", "mssfix"));
 
     private OvpnConfigTools() {}
 
@@ -106,6 +108,10 @@ public final class OvpnConfigTools {
         if (localPort > 0) {
             sb.append("proto tcp-client\n");
             sb.append("remote 127.0.0.1 ").append(localPort).append('\n');
+            sb.append("resolv-retry infinite\n");
+            sb.append("nobind\n");
+            sb.append("persist-key\n");
+            sb.append("persist-tun\n");
             if (excludeIp != null && excludeIp.matches("^\\d{1,3}(\\.\\d{1,3}){3}$")) {
                 sb.append("route ").append(excludeIp).append(" 255.255.255.255 net_gateway\n");
             }
