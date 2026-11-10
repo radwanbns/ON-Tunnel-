@@ -1,5 +1,5 @@
+
 import java.io.ByteArrayOutputStream
-import org.gradle.api.tasks.Exec
 
 plugins {
     id("com.android.application")
@@ -40,15 +40,23 @@ android {
             include(
                 *((project.findProperty("ABI_FILTERS") as? String)
                     ?.split(";")?.toTypedArray()
-                    ?: arrayOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86"))
+                    ?: arrayOf(
+                        "arm64-v8a",
+                        "armeabi-v7a",
+                        "x86",
+                        "x86_64"
+                    ))
             )
-            isUniversalApk = false
+            isUniversalApk = true
         }
     }
 
     signingConfigs {
         create("stableDebug") {
-            storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
+            storeFile = file(
+                System.getProperty("user.home") +
+                    "/.android/debug.keystore"
+            )
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
@@ -60,6 +68,7 @@ android {
             signingConfig = signingConfigs.getByName("stableDebug")
             isMinifyEnabled = true
             isShrinkResources = false
+
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -86,9 +95,9 @@ tasks.register("printDebugSha256") {
 
     doLast {
         val apk = fileTree("build/outputs/apk/debug") {
-            include("**/*.apk")
+            include("**/*universal*.apk")
         }.files.firstOrNull()
-            ?: error("Debug APK not found")
+            ?: error("Universal Debug APK not found")
 
         val output = ByteArrayOutputStream()
 
@@ -102,20 +111,28 @@ tasks.register("printDebugSha256") {
             standardOutput = output
         }
 
-        println("DEBUG APK CERTIFICATE:")
+        println("UNIVERSAL APK CERTIFICATE:")
         println(output.toString())
     }
 }
 
 dependencies {
     implementation(files("libs/libv2ray.aar"))
+
     implementation("androidx.core:core-ktx:1.15.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    implementation(
+        "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0"
+    )
+
+    implementation(
+        platform("androidx.compose:compose-bom:2024.12.01")
+    )
+
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
