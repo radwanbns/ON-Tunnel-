@@ -446,7 +446,11 @@ internal fun ONTunnelApp(
                                         status = status,
                                         detail = statusDetail,
                                         serverName = selected?.name,
-                                        serverBadge = selected?.let { badgeFor(it) },
+                                        serverBadge = when {
+                                            selected == null -> null
+                                            selected.locked -> "Locked"
+                                            else -> null
+                                        },
                                         busyLocked = status == VpnStatus.Disconnecting,
                                         onClick = ::toggleConnect
                                     )
@@ -477,11 +481,9 @@ internal fun ONTunnelApp(
                                         ErrorCard(error, onDismissError)
                                     }
                                     LazyColumn(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .heightIn(max = 300.dp),
-                                        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 12.dp),
-                                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         if (servers.isEmpty()) {
                                             item {
@@ -949,10 +951,10 @@ private fun ConnectHero(
     )
 
     Column(
-        Modifier.fillMaxWidth().padding(top = 0.dp, bottom = 4.dp),
+        Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(Modifier.size(160.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(236.dp), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxSize()) {
                 val maxR = size.minDimension / 2f
                 // static halo
@@ -970,20 +972,20 @@ private fun ConnectHero(
                 }
             }
             Box(
-                Modifier.size(88.dp)
-                    .shadow(12.dp, CircleShape, ambientColor = color, spotColor = color)
+                Modifier.size(128.dp)
+                    .shadow(18.dp, CircleShape, ambientColor = color, spotColor = color)
                     .clip(CircleShape)
                     .background(Brush.linearGradient(listOf(color, color.copy(alpha = 0.72f))))
                     .clickable(enabled = !busyLocked, onClick = onClick),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.PowerSettingsNew, contentDescription = "Connect", tint = OnHero, modifier = Modifier.size(40.dp))
+                Icon(Icons.Default.PowerSettingsNew, contentDescription = "Connect", tint = OnHero, modifier = Modifier.size(56.dp))
             }
             if (status == VpnStatus.Connecting || status == VpnStatus.Disconnecting) {
-                CircularProgressIndicator(Modifier.size(104.dp), color = color, strokeWidth = 2.5.dp)
+                CircularProgressIndicator(Modifier.size(150.dp), color = color, strokeWidth = 3.dp)
             }
         }
-        Text(label, color = color, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+        Text(label, color = color, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(2.dp))
         val sub = when {
             status == VpnStatus.Connected -> formatElapsed(elapsed)
