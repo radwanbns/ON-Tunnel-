@@ -326,19 +326,7 @@ internal fun ONTunnelApp(
                     Scaffold(
                         containerColor = Color.Transparent,
                         snackbarHost = { SnackbarHost(snackbar) },
-                        floatingActionButton = {
-                            if (selectedTab == 0) {
-                                ExtendedFloatingActionButton(
-                                    onClick = { showAddSheet = true },
-                                    containerColor = Accent,
-                                    contentColor = OnHero
-                                ) {
-                                    Icon(Icons.Default.Add, null)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Add server", fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        },
+                        floatingActionButton = { },
                         bottomBar = {
                             NavigationBar(containerColor = SurfaceC) {
                                 NavigationBarItem(
@@ -379,6 +367,20 @@ internal fun ONTunnelApp(
                                         IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "Menu") }
                                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                                             DropdownMenuItem(
+                                                text = { Text("Add server") },
+                                                leadingIcon = { Icon(Icons.Default.Add, null) },
+                                                onClick = { menuOpen = false; showAddSheet = true }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text(if (isUpdating) "Checking..." else "Check update") },
+                                                leadingIcon = {
+                                                    if (isUpdating) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                                                    else Icon(Icons.Default.Refresh, null)
+                                                },
+                                                enabled = !isUpdating,
+                                                onClick = { menuOpen = false; runUpdate(auto = false) }
+                                            )
+                                            DropdownMenuItem(
                                                 text = {
                                                     Text(
                                                         when (themeMode) {
@@ -393,6 +395,11 @@ internal fun ONTunnelApp(
                                                     themeMode = when (themeMode) { "system" -> "light"; "light" -> "dark"; else -> "system" }
                                                     store.themeMode = themeMode
                                                 }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Delete added servers") },
+                                                leadingIcon = { Icon(Icons.Default.Delete, null, tint = RedErr) },
+                                                onClick = { menuOpen = false; confirmDeleteAll = true }
                                             )
                                         }
                                     }
@@ -422,40 +429,6 @@ internal fun ONTunnelApp(
                                         busyLocked = status == VpnStatus.Disconnecting,
                                         onClick = ::toggleConnect
                                     )
-                                    // Auto Select + Random
-                                    Row(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 20.dp, vertical = 6.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        Button(
-                                            onClick = { selectAuto() },
-                                            modifier = Modifier.weight(1f).height(44.dp),
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = SurfaceHigh,
-                                                contentColor = TextMain
-                                            ),
-                                            shape = RoundedCornerShape(14.dp)
-                                        ) {
-                                            Icon(Icons.Default.AutoAwesome, null, Modifier.size(18.dp), tint = Accent)
-                                            Spacer(Modifier.width(6.dp))
-                                            Text("Auto Select", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                                        }
-                                        Button(
-                                            onClick = { selectRandom() },
-                                            modifier = Modifier.weight(1f).height(44.dp),
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = SurfaceHigh,
-                                                contentColor = TextMain
-                                            ),
-                                            shape = RoundedCornerShape(14.dp)
-                                        ) {
-                                            Icon(Icons.Default.Shuffle, null, Modifier.size(18.dp), tint = Accent)
-                                            Spacer(Modifier.width(6.dp))
-                                            Text("Random", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                                        }
-                                    }
                                     Row(
                                         Modifier
                                             .fillMaxWidth()
@@ -475,8 +448,8 @@ internal fun ONTunnelApp(
                                     }
                                     LazyColumn(
                                         modifier = Modifier.weight(1f).fillMaxWidth(),
-                                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         if (tampered) {
                                             item {
@@ -1089,39 +1062,38 @@ private fun ServerCard(
     var menu by remember { mutableStateOf(false) }
     Card(
         onClick = onSelect,
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = if (selected) SurfaceHigh else SurfaceC),
-        border = if (selected) BorderStroke(1.5.dp, Accent) else BorderStroke(1.dp, TextMuted.copy(alpha = 0.16f)),
+        border = if (selected) BorderStroke(1.dp, Accent) else BorderStroke(1.dp, TextMuted.copy(alpha = 0.14f)),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+            Modifier.fillMaxWidth().padding(start = 10.dp, end = 2.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                Modifier.size(40.dp).clip(CircleShape)
+                Modifier.size(32.dp).clip(CircleShape)
                     .background(if (selected) Accent else Accent.copy(alpha = 0.14f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     if (entry.isOpenVpn) Icons.Default.VpnKey else Icons.Default.Bolt, null,
-                    tint = if (selected) OnHero else Accent, modifier = Modifier.size(20.dp)
+                    tint = if (selected) OnHero else Accent, modifier = Modifier.size(16.dp)
                 )
             }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (entry.locked) {
-                        Icon(Icons.Default.Lock, "Locked", tint = TextMuted, modifier = Modifier.size(13.dp))
-                        Spacer(Modifier.width(5.dp))
+                        Icon(Icons.Default.Lock, "Locked", tint = TextMuted, modifier = Modifier.size(11.dp))
+                        Spacer(Modifier.width(4.dp))
                     }
                     Text(
-                        entry.name, color = TextMain, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                        entry.name, color = TextMain, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                         maxLines = 1, overflow = TextOverflow.Ellipsis
                     )
                 }
-                Spacer(Modifier.height(2.dp))
-                Text(badge, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(badge, color = TextMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (selected) {
                 Icon(Icons.Default.CheckCircle, null, tint = Accent, modifier = Modifier.size(22.dp))
