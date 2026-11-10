@@ -327,7 +327,7 @@ internal fun ONTunnelApp(
                         containerColor = Color.Transparent,
                         snackbarHost = { SnackbarHost(snackbar) },
                         floatingActionButton = {
-                            if (selectedTab == 1) {
+                            if (selectedTab == 0) {
                                 ExtendedFloatingActionButton(
                                     onClick = { showAddSheet = true },
                                     containerColor = Accent,
@@ -355,17 +355,6 @@ internal fun ONTunnelApp(
                                 NavigationBarItem(
                                     selected = selectedTab == 1,
                                     onClick = { selectedTab = 1 },
-                                    icon = { Icon(Icons.Default.Dns, contentDescription = "Servers") },
-                                    label = { Text("Servers") },
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = Accent,
-                                        selectedTextColor = Accent,
-                                        indicatorColor = Accent.copy(alpha = 0.18f)
-                                    )
-                                )
-                                NavigationBarItem(
-                                    selected = selectedTab == 2,
-                                    onClick = { selectedTab = 2 },
                                     icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
                                     label = { Text("Settings") },
                                     colors = NavigationBarItemDefaults.colors(
@@ -424,7 +413,7 @@ internal fun ONTunnelApp(
                             val selected = servers.firstOrNull { it.id == selectedId }
 
                             when (selectedTab) {
-                                0 -> { // ── HOME / CONNECT ──────────────────────────────
+                                0 -> { // ── HOME: connect + server list ─────────────
                                     ConnectHero(
                                         status = status,
                                         detail = statusDetail,
@@ -433,244 +422,132 @@ internal fun ONTunnelApp(
                                         busyLocked = status == VpnStatus.Disconnecting,
                                         onClick = ::toggleConnect
                                     )
-
-                                    // Selected server – tap to show / hide the full list
-                                    Card(
-                                        onClick = { showServerList = !showServerList },
-                                        shape = RoundedCornerShape(16.dp),
-                                        colors = CardDefaults.cardColors(containerColor = SurfaceC),
-                                        border = BorderStroke(1.dp, if (showServerList) Accent else TextMuted.copy(alpha = 0.2f)),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 20.dp, vertical = 4.dp)
-                                    ) {
-                                        Row(
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 14.dp, vertical = 14.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                if (selected?.isOpenVpn == true) Icons.Default.VpnKey else Icons.Default.Public,
-                                                null,
-                                                tint = Accent,
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                            Spacer(Modifier.width(12.dp))
-                                            Column(Modifier.weight(1f)) {
-                                                Text(
-                                                    selected?.name ?: "Tap to choose a server",
-                                                    color = TextMain,
-                                                    fontSize = 15.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                                if (selected != null) {
-                                                    Text(
-                                                        badgeFor(selected),
-                                                        color = TextMuted,
-                                                        fontSize = 12.sp,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
-                                                }
-                                            }
-                                            Icon(
-                                                if (showServerList) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                                contentDescription = null,
-                                                tint = TextMuted
-                                            )
-                                        }
-                                    }
-
-                                    // Expanded server list (only on home, when the card is open)
-                                    if (showServerList) {
-                                        LazyColumn(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 16.dp),
-                                            contentPadding = PaddingValues(top = 4.dp, bottom = 16.dp),
-                                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            if (servers.isEmpty()) {
-                                                item {
-                                                    Text(
-                                                        "No servers yet. Open the Servers tab to add some.",
-                                                        color = TextMuted,
-                                                        fontSize = 13.sp,
-                                                        modifier = Modifier.padding(12.dp)
-                                                    )
-                                                }
-                                            } else {
-                                                items(servers, key = { it.id }) { entry ->
-                                                    ServerCard(
-                                                        entry = entry,
-                                                        badge = remember(entry.id, entry.config) { badgeFor(entry) },
-                                                        selected = entry.id == selectedId,
-                                                        onSelect = {
-                                                            select(entry.id)
-                                                            showServerList = false
-                                                            message("Selected: ${entry.name}")
-                                                        },
-                                                        onEdit = { openEditor(entry) },
-                                                        onCopyUri = {
-                                                            if (entry.isOpenVpn) {
-                                                                OvpnProfile.fromJson(entry.config)?.let { copyText(".ovpn", it.config) }
-                                                            } else if (entry.uri.isNotBlank()) copyText("URI", entry.uri)
-                                                            else message("No link stored for this server")
-                                                        },
-                                                        onCopyJson = { copyText("JSON", entry.config) },
-                                                        onDuplicate = {
-                                                            val copy = entry.copy(
-                                                                id = java.util.UUID.randomUUID().toString(),
-                                                                name = entry.name + " copy"
-                                                            )
-                                                            saveServers(servers + copy)
-                                                        },
-                                                        onDelete = {
-                                                            if (!entry.locked) {
-                                                                saveServers(servers.filter { it.id != entry.id })
-                                                                if (selectedId == entry.id) select("")
-                                                            }
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        // Auto Select + Random (visible when list is collapsed)
-                                        Row(
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 20.dp, vertical = 10.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                        ) {
-                                            Button(
-                                                onClick = {
-                                                    selectAuto()
-                                                },
-                                                modifier = Modifier.weight(1f).height(48.dp),
-                                                colors = ButtonDefaults.buttonColors(
-                                                    containerColor = SurfaceHigh,
-                                                    contentColor = TextMain
-                                                ),
-                                                shape = RoundedCornerShape(14.dp)
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.AutoAwesome,
-                                                    null,
-                                                    modifier = Modifier.size(18.dp),
-                                                    tint = Accent
-                                                )
-                                                Spacer(Modifier.width(6.dp))
-                                                Text("Auto Select", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                            }
-                                            Button(
-                                                onClick = { selectRandom() },
-                                                modifier = Modifier.weight(1f).height(48.dp),
-                                                colors = ButtonDefaults.buttonColors(
-                                                    containerColor = SurfaceHigh,
-                                                    contentColor = TextMain
-                                                ),
-                                                shape = RoundedCornerShape(14.dp)
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.Shuffle,
-                                                    null,
-                                                    modifier = Modifier.size(18.dp),
-                                                    tint = Accent
-                                                )
-                                                Spacer(Modifier.width(6.dp))
-                                                Text("Random", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                            }
-                                        }
-                                        if (tampered) {
-                                            ErrorCard(
-                                                "App signature does not match the official build – connection disabled for your safety.",
-                                                {}
-                                            )
-                                        }
-                                        if (error != null) {
-                                            ErrorCard(error, onDismissError)
-                                        }
-                                        Spacer(Modifier.weight(1f))
-                                    }
-                                }
-                                1 -> { // ── SERVERS ────────────────────────────────────
+                                    // Auto Select + Random
                                     Row(
-                                        Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 6.dp),
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 20.dp, vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Button(
+                                            onClick = { selectAuto() },
+                                            modifier = Modifier.weight(1f).height(44.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = SurfaceHigh,
+                                                contentColor = TextMain
+                                            ),
+                                            shape = RoundedCornerShape(14.dp)
+                                        ) {
+                                            Icon(Icons.Default.AutoAwesome, null, Modifier.size(18.dp), tint = Accent)
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("Auto Select", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                        }
+                                        Button(
+                                            onClick = { selectRandom() },
+                                            modifier = Modifier.weight(1f).height(44.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = SurfaceHigh,
+                                                contentColor = TextMain
+                                            ),
+                                            shape = RoundedCornerShape(14.dp)
+                                        ) {
+                                            Icon(Icons.Default.Shuffle, null, Modifier.size(18.dp), tint = Accent)
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("Random", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                        }
+                                    }
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text("Servers", color = TextMain, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                                         Spacer(Modifier.width(8.dp))
                                         Box(
-                                            Modifier.clip(RoundedCornerShape(10.dp)).background(SurfaceHigh)
+                                            Modifier
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(SurfaceHigh)
                                                 .padding(horizontal = 8.dp, vertical = 2.dp)
-                                        ) { Text("${servers.size}", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                                        ) {
+                                            Text("${servers.size}", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
                                     }
                                     LazyColumn(
                                         modifier = Modifier.weight(1f).fillMaxWidth(),
-                                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+                                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp),
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                if (tampered) {
-                                    item { ErrorCard("App signature does not match the official build – connection disabled for your safety.", {}) }
-                                }
-                                if (error != null) {
-                                    item { ErrorCard(error, onDismissError) }
-                                }
-                                if (servers.isEmpty()) {
-                                    item {
-                                        Column(
-                                            Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(SurfaceC).padding(28.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally
-                                        ) {
-                                            Icon(Icons.Default.Dns, null, tint = Accent, modifier = Modifier.size(36.dp))
-                                            Spacer(Modifier.height(10.dp))
-                                            Text(
-                                                "No servers yet.\nTap “Add server”, or use the menu ⋮ → Check update.",
-                                                color = TextMuted, fontSize = 14.sp, textAlign = TextAlign.Center
-                                            )
+                                        if (tampered) {
+                                            item {
+                                                ErrorCard(
+                                                    "App signature does not match the official build – connection disabled for your safety.",
+                                                    {}
+                                                )
+                                            }
                                         }
-                                    }
-                                } else {
-                                    items(servers, key = { it.id }) { entry ->
-                                        ServerCard(
-                                            entry = entry,
-                                            badge = remember(entry.id, entry.config) { badgeFor(entry) },
-                                            selected = entry.id == selectedId,
-                                            onSelect = {
-                                                select(entry.id)
-                                                if (status != VpnStatus.Connecting && status != VpnStatus.Disconnecting) {
-                                                    onConnect(entry)
-                                                }
-                                            },
-                                            onEdit = { openEditor(entry) },
-                                            onCopyUri = {
-                                                if (entry.isOpenVpn) {
-                                                    OvpnProfile.fromJson(entry.config)?.let { copyText(".ovpn", it.config) }
-                                                } else if (entry.uri.isNotBlank()) copyText("URI", entry.uri)
-                                                else message("No link stored for this server – use Copy JSON")
-                                            },
-                                            onCopyJson = { copyText("JSON", entry.config) },
-                                            onDuplicate = {
-                                                val copy = entry.copy(id = java.util.UUID.randomUUID().toString(), name = entry.name + " copy")
-                                                saveServers(servers + copy)
-                                            },
-                                            onDelete = {
-                                                if (!entry.locked) {
-                                                    saveServers(servers.filter { it.id != entry.id })
-                                                    if (selectedId == entry.id) select("")
+                                        if (error != null) {
+                                            item { ErrorCard(error, onDismissError) }
+                                        }
+                                        if (servers.isEmpty()) {
+                                            item {
+                                                Column(
+                                                    Modifier
+                                                        .fillMaxWidth()
+                                                        .clip(RoundedCornerShape(20.dp))
+                                                        .background(SurfaceC)
+                                                        .padding(28.dp),
+                                                    horizontalAlignment = Alignment.CenterHorizontally
+                                                ) {
+                                                    Icon(Icons.Default.Dns, null, tint = Accent, modifier = Modifier.size(36.dp))
+                                                    Spacer(Modifier.height(10.dp))
+                                                    Text(
+                                                        "No servers yet.\nTap “Add server”, or wait for the subscription update.",
+                                                        color = TextMuted,
+                                                        fontSize = 14.sp,
+                                                        textAlign = TextAlign.Center
+                                                    )
                                                 }
                                             }
-                                        )
+                                        } else {
+                                            items(servers, key = { it.id }) { entry ->
+                                                ServerCard(
+                                                    entry = entry,
+                                                    badge = remember(entry.id, entry.config) { badgeFor(entry) },
+                                                    selected = entry.id == selectedId,
+                                                    onSelect = {
+                                                        select(entry.id)
+                                                        if (status != VpnStatus.Connecting && status != VpnStatus.Disconnecting) {
+                                                            onConnect(entry)
+                                                        }
+                                                    },
+                                                    onEdit = { openEditor(entry) },
+                                                    onCopyUri = {
+                                                        if (entry.isOpenVpn) {
+                                                            OvpnProfile.fromJson(entry.config)?.let { copyText(".ovpn", it.config) }
+                                                        } else if (entry.uri.isNotBlank()) copyText("URI", entry.uri)
+                                                        else message("No link stored for this server – use Copy JSON")
+                                                    },
+                                                    onCopyJson = { copyText("JSON", entry.config) },
+                                                    onDuplicate = {
+                                                        val copy = entry.copy(
+                                                            id = java.util.UUID.randomUUID().toString(),
+                                                            name = entry.name + " copy"
+                                                        )
+                                                        saveServers(servers + copy)
+                                                    },
+                                                    onDelete = {
+                                                        if (!entry.locked) {
+                                                            saveServers(servers.filter { it.id != entry.id })
+                                                            if (selectedId == entry.id) select("")
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                        }
                                     }
                                 }
-                            } // end LazyColumn
-                                } // end Servers branch (1)
-                                2 -> { // ── SETTINGS ───────────────────────────────────
+                                1 -> { // ── SETTINGS ───────────────────────────────────
                                     SettingsPage(
                                         themeMode = themeMode,
                                         onThemeChange = { themeMode = it; store.themeMode = it },
@@ -679,7 +556,7 @@ internal fun ONTunnelApp(
                                         customDns = customDns,
                                         onCustomDnsChange = { customDns = it; store.customDns = it }
                                     )
-                                } // end Settings
+                                }
                             } // end when
                         } // end Column
                     } // end Scaffold padding
