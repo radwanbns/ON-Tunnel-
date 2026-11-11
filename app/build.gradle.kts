@@ -1,5 +1,6 @@
 import java.io.ByteArrayOutputStream
 import org.gradle.api.tasks.Exec
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 val configuredAbis = (findProperty("ABI_FILTERS") as? String)
     ?.split(";")
@@ -88,8 +89,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
     }
 }
 
