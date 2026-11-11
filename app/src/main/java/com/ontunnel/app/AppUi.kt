@@ -23,6 +23,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -316,237 +317,197 @@ internal fun ONTunnelApp(
                 )
             } else {
                 val selected = servers.firstOrNull { it.id == selectedId }
-                val connected = status == VpnStatus.Connected
-                val connecting = status == VpnStatus.Connecting || status == VpnStatus.Disconnecting
 
-                val drawerState = rememberDrawerState(DrawerValue.Closed)
-                LaunchedEffect(drawerOpen) {
-                    if (drawerOpen) drawerState.open() else drawerState.close()
-                }
-                LaunchedEffect(drawerState.currentValue) {
-                    if (drawerState.currentValue == DrawerValue.Closed) drawerOpen = false
-                }
-                ModalNavigationDrawer(
-                    drawerState = drawerState,
-                    gesturesEnabled = true,
-                    drawerContent = {
-                        ModalDrawerSheet(drawerContainerColor = SurfaceC) {
-                            Column(
-                                Modifier
-                                    .fillMaxHeight()
-                                    .width(280.dp)
-                                    .padding(vertical = 12.dp)
-                            ) {
-                                Row(
-                                    Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Default.Shield, null, tint = Accent, modifier = Modifier.size(32.dp))
-                                    Spacer(Modifier.width(12.dp))
-                                    Text("ON Tunnel", color = TextMain, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-                                }
-                                HorizontalDivider(color = TextMuted.copy(alpha = 0.2f))
-                                Spacer(Modifier.height(8.dp))
-                                DrawerItem(Icons.Default.Settings, "Settings") {
-                                    drawerOpen = false
-                                    selectedTab = 1
-                                }
-                            }
-                        }
-                    }
-                ) {
-                    Box(
-                        Modifier.fillMaxSize().background(
-                            Brush.verticalGradient(
-                                0f to Accent.copy(alpha = if (dark) 0.10f else 0.08f),
-                                0.4f to Bg,
-                                1f to Bg
-                            )
+                Box(
+                    Modifier.fillMaxSize().background(
+                        Brush.verticalGradient(
+                            0f to Accent.copy(alpha = if (dark) 0.16f else 0.12f),
+                            0.55f to Bg,
+                            1f to Bg
                         )
-                    ) {
-                        Scaffold(
-                            containerColor = Color.Transparent,
-                            snackbarHost = { SnackbarHost(snackbar) },
-                            topBar = {
-                                CenterAlignedTopAppBar(
-                                    title = {
-                                        Text(
-                                            if (selectedTab == 1) "Settings" else "ON Tunnel",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 18.sp
-                                        )
-                                    },
-                                    navigationIcon = {
-                                        IconButton(onClick = {
-                                            if (selectedTab == 1) selectedTab = 0
-                                            else drawerOpen = true
-                                        }) {
-                                            Icon(
-                                                if (selectedTab == 1) Icons.Default.ArrowBack else Icons.Default.Menu,
-                                                contentDescription = "Menu"
+                    )
+                ) {
+                    Scaffold(
+                        containerColor = Color.Transparent,
+                        snackbarHost = { SnackbarHost(snackbar) },
+                        topBar = {
+                            CenterAlignedTopAppBar(
+                                title = {
+                                    Text("ON Tunnel", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+                                },
+                                navigationIcon = {
+                                    Box {
+                                        IconButton(onClick = { menuOpen = true }) {
+                                            Icon(Icons.Default.MoreVert, "Menu")
+                                        }
+                                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                            DropdownMenuItem(
+                                                text = { Text(if (isUpdating) "Checking..." else "Check update") },
+                                                leadingIcon = {
+                                                    if (isUpdating) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                                                    else Icon(Icons.Default.Refresh, null)
+                                                },
+                                                enabled = !isUpdating,
+                                                onClick = { menuOpen = false; runUpdate(auto = false) }
+                                            )
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Text(
+                                                        when (themeMode) {
+                                                            "light" -> "Theme: Light"
+                                                            "dark" -> "Theme: Dark"
+                                                            else -> "Theme: Auto"
+                                                        }
+                                                    )
+                                                },
+                                                leadingIcon = { Icon(Icons.Default.BrightnessMedium, null) },
+                                                onClick = {
+                                                    themeMode = when (themeMode) {
+                                                        "system" -> "light"
+                                                        "light" -> "dark"
+                                                        else -> "system"
+                                                    }
+                                                    store.themeMode = themeMode
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Add server") },
+                                                leadingIcon = { Icon(Icons.Default.Add, null) },
+                                                onClick = { menuOpen = false; showAddSheet = true }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Paste link / JSON") },
+                                                leadingIcon = { Icon(Icons.Default.Edit, null) },
+                                                onClick = { menuOpen = false; showPaste = true }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Import from clipboard") },
+                                                leadingIcon = { Icon(Icons.Default.ContentPaste, null) },
+                                                onClick = { menuOpen = false; importFromClipboard() }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Delete added servers") },
+                                                leadingIcon = { Icon(Icons.Default.Delete, null, tint = RedErr) },
+                                                onClick = { menuOpen = false; confirmDeleteAll = true }
                                             )
                                         }
-                                    },
-                                    actions = {
-                                        if (selectedTab == 0) {
-                                            IconButton(onClick = { showAddSheet = true }) {
-                                                Icon(Icons.Default.Add, contentDescription = "Add")
-                                            }
-                                            Box {
-                                                IconButton(onClick = { menuOpen = true }) {
-                                                    Icon(Icons.Default.MoreVert, contentDescription = "More")
-                                                }
-                                                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                                                    DropdownMenuItem(
-                                                        text = { Text("Add server") },
-                                                        leadingIcon = { Icon(Icons.Default.Add, null) },
-                                                        onClick = { menuOpen = false; showAddSheet = true }
-                                                    )
-                                                    DropdownMenuItem(
-                                                        text = { Text(if (isUpdating) "Checking..." else "Check update") },
-                                                        leadingIcon = {
-                                                            if (isUpdating) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                                                            else Icon(Icons.Default.Refresh, null)
-                                                        },
-                                                        enabled = !isUpdating,
-                                                        onClick = { menuOpen = false; runUpdate(auto = false) }
-                                                    )
-                                                    DropdownMenuItem(
-                                                        text = { Text("Delete added servers") },
-                                                        leadingIcon = { Icon(Icons.Default.Delete, null, tint = RedErr) },
-                                                        onClick = { menuOpen = false; confirmDeleteAll = true }
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    },
-                                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                                        containerColor = Color.Transparent,
-                                        titleContentColor = TextMain,
-                                        navigationIconContentColor = TextMain,
-                                        actionIconContentColor = TextMain
-                                    )
+                                    }
+                                },
+                                actions = {
+                                    IconButton(onClick = { openTelegram(context) }) {
+                                        Icon(Icons.AutoMirrored.Filled.Send, "Telegram", tint = Accent)
+                                    }
+                                },
+                                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                                    containerColor = Color.Transparent,
+                                    titleContentColor = TextMain,
+                                    navigationIconContentColor = TextMain,
+                                    actionIconContentColor = TextMain
                                 )
-                            },
-                            floatingActionButton = { },
-                        ) { padding ->
-                            Column(Modifier.fillMaxSize().padding(padding)) {
-                                if (selectedTab == 1) {
-                                    SettingsPage(
-                                        themeMode = themeMode,
-                                        onThemeChange = { themeMode = it; store.themeMode = it },
-                                        dnsMode = dnsMode,
-                                        onDnsModeChange = { dnsMode = it; store.dnsMode = it },
-                                        customDns = customDns,
-                                        onCustomDnsChange = { customDns = it; store.customDns = it }
-                                    )
-                                } else {
-                                    // Big circular connect button (as before)
-                                    ConnectHero(
-                                        status = status,
-                                        detail = statusDetail,
-                                        serverName = selected?.name,
-                                        serverBadge = when {
-                                            selected == null -> null
-                                            selected.locked -> "Locked"
-                                            else -> null
-                                        },
-                                        busyLocked = status == VpnStatus.Disconnecting,
-                                        onClick = ::toggleConnect
-                                    )
-                                    Row(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("Servers", color = TextMain, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                        Spacer(Modifier.width(8.dp))
-                                        Box(
+                            )
+                        }
+                    ) { padding ->
+                        Column(Modifier.fillMaxSize().padding(padding)) {
+                            ConnectHero(
+                                status = status,
+                                detail = statusDetail,
+                                serverName = selected?.name,
+                                serverBadge = null,
+                                busyLocked = status == VpnStatus.Disconnecting,
+                                onClick = ::toggleConnect
+                            )
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Servers", color = TextMain, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.width(8.dp))
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(SurfaceHigh)
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text("${servers.size}", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            if (tampered) {
+                                ErrorCard(
+                                    "App signature does not match the official build – connection disabled for your safety.",
+                                    {}
+                                )
+                            }
+                            if (error != null) {
+                                ErrorCard(error, onDismissError)
+                            }
+                            LazyColumn(
+                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (servers.isEmpty()) {
+                                    item {
+                                        Column(
                                             Modifier
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(SurfaceHigh)
-                                                .padding(horizontal = 7.dp, vertical = 1.dp)
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(20.dp))
+                                                .background(SurfaceC)
+                                                .padding(28.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
                                         ) {
-                                            Text("${servers.size}", color = Accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            Icon(Icons.Default.Dns, null, tint = Accent, modifier = Modifier.size(36.dp))
+                                            Spacer(Modifier.height(10.dp))
+                                            Text(
+                                                "No servers yet.\nUse the menu ⋮ to add or update.",
+                                                color = TextMuted,
+                                                fontSize = 14.sp,
+                                                textAlign = TextAlign.Center
+                                            )
                                         }
                                     }
-                                    if (tampered) {
-                                        ErrorCard(
-                                            "App signature does not match the official build – connection disabled for your safety.",
-                                            {}
-                                        )
-                                    }
-                                    if (error != null) {
-                                        ErrorCard(error, onDismissError)
-                                    }
-                                    LazyColumn(
-                                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        if (servers.isEmpty()) {
-                                            item {
-                                                Column(
-                                                    Modifier
-                                                        .fillMaxWidth()
-                                                        .clip(RoundedCornerShape(16.dp))
-                                                        .background(SurfaceC)
-                                                        .padding(24.dp),
-                                                    horizontalAlignment = Alignment.CenterHorizontally
-                                                ) {
-                                                    Icon(Icons.Default.Dns, null, tint = Accent, modifier = Modifier.size(32.dp))
-                                                    Spacer(Modifier.height(8.dp))
-                                                    Text(
-                                                        "No servers yet.\nTap + to add, or Check update from the menu.",
-                                                        color = TextMuted,
-                                                        fontSize = 13.sp,
-                                                        textAlign = TextAlign.Center
-                                                    )
+                                } else {
+                                    items(servers, key = { it.id }) { entry ->
+                                        ServerCard(
+                                            entry = entry,
+                                            badge = "",
+                                            selected = entry.id == selectedId,
+                                            onSelect = {
+                                                select(entry.id)
+                                                if (status != VpnStatus.Connecting && status != VpnStatus.Disconnecting) {
+                                                    onConnect(entry)
+                                                }
+                                            },
+                                            onEdit = { openEditor(entry) },
+                                            onCopyUri = {
+                                                if (entry.isOpenVpn) {
+                                                    OvpnProfile.fromJson(entry.config)?.let { copyText(".ovpn", it.config) }
+                                                } else if (entry.uri.isNotBlank()) copyText("URI", entry.uri)
+                                                else message("No link stored for this server – use Copy JSON")
+                                            },
+                                            onCopyJson = { copyText("JSON", entry.config) },
+                                            onDuplicate = {
+                                                val copy = entry.copy(
+                                                    id = java.util.UUID.randomUUID().toString(),
+                                                    name = entry.name + " copy"
+                                                )
+                                                saveServers(servers + copy)
+                                            },
+                                            onDelete = {
+                                                if (!entry.locked) {
+                                                    saveServers(servers.filter { it.id != entry.id })
+                                                    if (selectedId == entry.id) select("")
                                                 }
                                             }
-                                        } else {
-                                            items(servers, key = { it.id }) { entry ->
-                                                ServerCard(
-                                                    entry = entry,
-                                                    badge = remember(entry.id, entry.config) { badgeFor(entry) },
-                                                    selected = entry.id == selectedId,
-                                                    onSelect = {
-                                                        select(entry.id)
-                                                        if (status != VpnStatus.Connecting && status != VpnStatus.Disconnecting) {
-                                                            onConnect(entry)
-                                                        }
-                                                    },
-                                                    onEdit = { openEditor(entry) },
-                                                    onCopyUri = {
-                                                        if (entry.isOpenVpn) {
-                                                            OvpnProfile.fromJson(entry.config)?.let { copyText(".ovpn", it.config) }
-                                                        } else if (entry.uri.isNotBlank()) copyText("URI", entry.uri)
-                                                        else message("No link stored for this server – use Copy JSON")
-                                                    },
-                                                    onCopyJson = { copyText("JSON", entry.config) },
-                                                    onDuplicate = {
-                                                        val copy = entry.copy(
-                                                            id = java.util.UUID.randomUUID().toString(),
-                                                            name = entry.name + " copy"
-                                                        )
-                                                        saveServers(servers + copy)
-                                                    },
-                                                    onDelete = {
-                                                        if (!entry.locked) {
-                                                            saveServers(servers.filter { it.id != entry.id })
-                                                            if (selectedId == entry.id) select("")
-                                                        }
-                                                    }
-                                                )
-                                            }
-                                        }
+                                        )
                                     }
                                 }
                             }
                         }
                     }
-                } // end Box/Drawer
+                }
+
 
             } // end else (no editor)
 
@@ -1075,9 +1036,7 @@ private fun v2rayBadge(config: String): String = try {
     "V2Ray"
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ServerCard(
+@OptIn(Expprivate fun ServerCard(
     entry: ServerEntry,
     badge: String,
     selected: Boolean,
@@ -1091,59 +1050,52 @@ private fun ServerCard(
     var menu by remember { mutableStateOf(false) }
     Card(
         onClick = onSelect,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = if (selected) SurfaceHigh else SurfaceC),
-        border = if (selected) BorderStroke(1.dp, Accent) else BorderStroke(1.dp, TextMuted.copy(alpha = 0.14f)),
+        border = if (selected) BorderStroke(1.5.dp, Accent) else BorderStroke(0.dp, Color.Transparent),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(start = 10.dp, end = 2.dp, top = 6.dp, bottom = 6.dp),
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Radio indicator
             Box(
-                Modifier.size(32.dp).clip(CircleShape)
-                    .background(
-                        if (entry.locked) TextMuted.copy(alpha = 0.18f)
-                        else if (selected) Accent
-                        else Accent.copy(alpha = 0.14f)
+                Modifier
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(if (selected) Accent else Color.Transparent)
+                    .then(
+                        if (!selected) Modifier.border(2.dp, TextMuted.copy(alpha = 0.45f), CircleShape)
+                        else Modifier
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    if (entry.locked) Icons.Default.Lock
-                    else if (entry.isOpenVpn) Icons.Default.VpnKey
-                    else Icons.Default.Bolt,
-                    contentDescription = if (entry.locked) "Locked" else null,
-                    tint = if (entry.locked) TextMuted
-                    else if (selected) OnHero
-                    else Accent,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    entry.name,
-                    color = TextMain,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                // Locked servers: name + lock only (no badge / protocol details)
-                if (!entry.locked) {
-                    Text(badge, color = TextMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (selected) {
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(OnHero))
                 }
             }
-            if (selected) {
-                Icon(Icons.Default.CheckCircle, null, tint = Accent, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(10.dp))
+            if (entry.locked) {
+                Icon(Icons.Default.Lock, "Locked", tint = TextMuted, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
             }
-            // Locked: no share / edit menu at all
+            Text(
+                entry.name,
+                color = TextMain,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            // Unlocked only: options menu (no protocol badge — same size as locked rows)
             if (!entry.locked) {
                 Box {
-                    IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.MoreVert, "Options", tint = TextMuted, modifier = Modifier.size(20.dp))
+                    IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.MoreVert, "Options", tint = TextMuted, modifier = Modifier.size(18.dp))
                     }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(
