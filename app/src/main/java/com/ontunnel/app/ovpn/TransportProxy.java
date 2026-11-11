@@ -174,40 +174,44 @@ public final class TransportProxy {
                 RNG.nextBytes(k);
                 wsKey = Base64.getEncoder().encodeToString(k);
             }
-            // ── payload handshake ────────────────────────────────────────
-            // Each *complete* HTTP request (ends with a blank line) gets its own reply read.
-            // Intermediate replies (decoy GETs such as /cdn-cgi/trace) are drained and ignored;
-            // only the LAST reply decides success. A 101 at any point ends the handshake.
-            // A part that does not end a request (an explicit [split] fragment) is simply written.
+            // Match the working injector flow: send all payload fragments/requests first,
+            // then consume HTTP replies. Some proxies require the complete multi-request
+            // payload (for example GET /cdn-cgi/trace followed by ACL /) before replying.
             List<PayloadTemplate.Part> parts = buildPayloadParts(wsKey);
-            StringBuilder sentText = new StringBuilder();
-            for (PayloadTemplate.Part part : parts) sentText.append(new String(part.data, StandardCharsets.ISO_8859_1));
-
-            Reply last = null;
-            boolean noReply = false;
-            for (int i = 0; i < parts.size(); i++) {
-                PayloadTemplate.Part part = parts.get(i);
+            for (PayloadTemplate.Part part : parts) {
                 if (part.delayBeforeMs > 0 && !pause(part.delayBeforeMs)) throw new IOException("Interrupted");
+                if (part.data.length == 0) continue;
                 upOut.write(part.data);
                 upOut.flush();
-                boolean isLast = i == parts.size() - 1;
-                if (!isLast && !endsRequest(part.data)) continue; // mid-request fragment: no reply yet
+            }
 
-                int attempt = i + 1;
-                // legacy (HTTP Custom style) does not wait long for a reply that is never coming
-                up.setSoTimeout(isLast ? (wsMode ? 15000 : cfg.mode == TransportConfig.MODE_LEGACY ? 6000 : 10000) : 10000);
+            int expectedReplies = countHttpRequests(parts);
+            Reply last = null;
+            Reply pending = null;
+            boolean noReply = false;
+            for (int i = 0; i < expectedReplies; i++) {
+                boolean isLast = i == expectedReplies - 1;
+                up.setSoTimeout(wsMode ? 15000 : cfg.mode == TransportConfig.MODE_LEGACY ? 6000 : 10000);
                 Reply r;
                 try {
-                    r = readReply(upIn);
+                    r = pending != null ? pending : readReply(upIn);
+                    pending = null;
                 } catch (java.net.SocketTimeoutException ste) {
-                    if (isLast && lenient) { noReply = true; break; } // injector-style: no answer, go raw
-                    throw new IOException("No reply from the server to payload request #" + attempt);
+                    if (lenient && (i == 0 || last != null)) { noReply = last == null; break; }
+                    throw new IOException("No reply from the server to payload request #" + (i + 1));
                 } catch (EOFException eof) {
-                    throw new IOException("Server closed the connection after payload request #" + attempt);
+                    throw new IOException("Server closed the connection after payload request #" + (i + 1));
                 }
                 last = r;
-                if (r.code == 101) break;                    // upgraded: raw (or framed) stream starts now
-                if (!isLast) drainBody(up, upIn, r);         // decoy reply: discard it
+                if (r.code == 101) break;
+                if (!isLast) {
+                    try {
+                        pending = drainBody(up, upIn, r);
+                    } catch (java.net.SocketTimeoutException ste) {
+                        if (!lenient) throw new IOException("No reply after payload request #" + (i + 1));
+                        break;
+                    }
+                }
             }
 
             if (!noReply) {
@@ -326,34 +330,27 @@ public final class TransportProxy {
                 tpl = "GET / HTTP/1.1[crlf]Host: [host][crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf][crlf]";
             }
         }
-        List<PayloadTemplate.Part> parts = PayloadTemplate.expand(tpl, cfg.targetHost, cfg.targetPort, wsKey);
-        // If the user pasted a multi-request bug payload without [split], break it at
-        // intermediate CRLFCRLF so each HTTP request is its own write + response drain.
-        if (parts.size() == 1) {
-            parts = splitHttpRequests(parts.get(0));
-        }
-        return parts;
+        // Keep the payload intact. Only explicit split markers create fragments;
+        // automatic CRLFCRLF splitting changes injector semantics.
+        return PayloadTemplate.expand(tpl, cfg.targetHost, cfg.targetPort, wsKey);
     }
 
-    /** Split one blob into HTTP requests at each intermediate \\r\\n\\r\\n (keep final empty line with last req). */
-    private static List<PayloadTemplate.Part> splitHttpRequests(PayloadTemplate.Part single) {
-        String s = new String(single.data, StandardCharsets.ISO_8859_1);
-        List<PayloadTemplate.Part> out = new ArrayList<PayloadTemplate.Part>();
-        int from = 0;
-        while (from < s.length()) {
-            int idx = s.indexOf("\r\n\r\n", from);
-            if (idx < 0) {
-                String tail = s.substring(from);
-                if (!tail.isEmpty()) out.add(new PayloadTemplate.Part(tail.getBytes(StandardCharsets.ISO_8859_1), out.isEmpty() ? single.delayBeforeMs : 80));
-                break;
-            }
-            String chunk = s.substring(from, idx + 4); // include the blank line
-            out.add(new PayloadTemplate.Part(chunk.getBytes(StandardCharsets.ISO_8859_1), out.isEmpty() ? single.delayBeforeMs : 80));
-            from = idx + 4;
+    /** Count complete HTTP requests in the expanded payload, regardless of explicit split fragments. */
+    private static int countHttpRequests(List<PayloadTemplate.Part> parts) {
+        StringBuilder all = new StringBuilder();
+        for (PayloadTemplate.Part part : parts) {
+            all.append(new String(part.data, StandardCharsets.ISO_8859_1));
         }
-        if (out.isEmpty()) out.add(single);
-        return out;
+        String value = all.toString();
+        int count = 0;
+        for (int i = 0; i < value.length();) {
+            if (value.startsWith("\r\n\r\n", i)) { count++; i += 4; }
+            else if (value.startsWith("\n\n", i)) { count++; i += 2; }
+            else i++;
+        }
+        return Math.max(1, count);
     }
+
 
     /** True when we are dialing a different host/port than the real OpenVPN target (HTTP proxy path). */
     private boolean isHttpProxyDial() {
@@ -397,8 +394,8 @@ public final class TransportProxy {
     }
 
     /** Discards the body of an intermediate reply so the next request starts on a clean stream. */
-    private static void drainBody(Socket up, InputStream in, Reply r) throws IOException {
-        if (r.code == 204 || r.code == 304 || (r.code >= 100 && r.code < 200)) return;
+    private static Reply drainBody(Socket up, InputStream in, Reply r) throws IOException {
+        if (r.code == 204 || r.code == 304 || (r.code >= 100 && r.code < 200)) return null;
         String low = r.headers.toLowerCase(java.util.Locale.ROOT);
         int len = contentLength(r.headers);
         if (low.contains("transfer-encoding: chunked")) {
@@ -412,20 +409,46 @@ public final class TransportProxy {
                 left -= n;
             }
         } else if (len < 0) {
-            // No length information: whatever arrives shortly after the headers is body; swallow it.
-            int old = up.getSoTimeout();
-            try {
-                up.setSoTimeout(350);
-                byte[] buf = new byte[4096];
-                while (in.read(buf) >= 0) { /* discard */ }
-                throw new EOFException("Server closed while sending the decoy reply");
-            } catch (java.net.SocketTimeoutException quiet) {
-                // nothing more to read: body finished
-            } finally {
-                try { up.setSoTimeout(old); } catch (Exception ignored) { }
+            // No Content-Length: discard the decoy body until the next HTTP status line.
+            return scanNextReply(in);
+        }
+        return null;
+    }
+
+    /** Find and parse the next HTTP response after an intermediate response with unknown body length. */
+    private static Reply scanNextReply(InputStream in) throws IOException {
+        final String marker = "HTTP/";
+        int matched = 0;
+        long scanned = 0;
+        while (scanned++ < 65536) {
+            int c = in.read();
+            if (c < 0) throw new EOFException("Connection closed before the next HTTP reply");
+            char ch = (char) c;
+            matched = ch == marker.charAt(matched) ? matched + 1 : (ch == marker.charAt(0) ? 1 : 0);
+            if (matched == marker.length()) {
+                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                bytes.write(marker.getBytes(StandardCharsets.ISO_8859_1));
+                int state = 0;
+                while (bytes.size() < MAX_HEADER) {
+                    int b = in.read();
+                    if (b < 0) throw new EOFException("Connection closed during the next HTTP reply");
+                    bytes.write(b);
+                    if ((state == 0 || state == 2) && b == '\r') state++;
+                    else if ((state == 1 || state == 3) && b == '\n') state++;
+                    else state = b == '\r' ? 1 : 0;
+                    if (state == 4) break;
+                }
+                String headers = new String(bytes.toByteArray(), StandardCharsets.ISO_8859_1);
+                int eol = headers.indexOf("\r\n");
+                String status = eol > 0 ? headers.substring(0, eol) : headers.trim();
+                int code = statusCode(status);
+                if (code >= 100) return new Reply(status, headers, code);
+                matched = 0;
             }
         }
+        throw new IOException("Could not find the next HTTP reply in the intermediate response body");
     }
+
 
     private static void skipChunked(InputStream in) throws IOException {
         while (true) {
