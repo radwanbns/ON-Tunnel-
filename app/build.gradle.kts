@@ -25,10 +25,10 @@ android {
             }
         }
 
-        // Only ship ARM native libs (exclude x86/x86_64 from AARs like libv2ray)
+        // Ship ARM and Intel Android architectures.
         ndk {
             abiFilters.clear()
-            abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a"))
+            abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64"))
         }
     }
 
@@ -46,7 +46,7 @@ android {
             include(
                 *((project.findProperty("ABI_FILTERS") as? String)
                     ?.split(";")?.toTypedArray()
-                    ?: arrayOf("arm64-v8a", "armeabi-v7a"))
+                    ?: arrayOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64"))
             )
             isUniversalApk = true
         }
@@ -77,12 +77,6 @@ android {
         jniLibs {
             // ICS OpenVPN executes its bundled native OpenVPN binary from nativeLibraryDir.
             useLegacyPackaging = true
-            excludes += setOf(
-                "**/lib/x86/**",
-                "**/lib/x86_64/**",
-                "**/x86/**",
-                "**/x86_64/**"
-            )
         }
     }
 
