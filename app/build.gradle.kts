@@ -75,6 +75,8 @@ android {
 
     packaging {
         jniLibs {
+            // ICS OpenVPN executes its bundled native OpenVPN binary from nativeLibraryDir.
+            useLegacyPackaging = true
             excludes += setOf(
                 "**/lib/x86/**",
                 "**/lib/x86_64/**",
