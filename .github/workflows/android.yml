@@ -72,12 +72,43 @@ jobs:
           fi
 
           yes | "$sdkmanager" --licenses || true
-          "$sdkmanager" "ndk;27.2.12479018" "cmake;3.22.1"
+          "$sdkmanager" "ndk;27.2.12479018" "ndk;30.0.14904198" "cmake;3.22.1"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
+
+      # Build the real ICS OpenVPN engine as an AAR; no external VPN app is required.
+      - name: Clone and build ICS OpenVPN library
+        env:
+          ICS_OPENVPN_REF: master
+        run: |
+          set -euxo pipefail
+          git clone --recurse-submodules --depth 1 --branch "$ICS_OPENVPN_REF" \
+            https://github.com/schwabe/ics-openvpn.git /tmp/ics-openvpn
+          cd /tmp/ics-openvpn
+          python3 "$GITHUB_WORKSPACE/.github/scripts/ics_to_library.py"
+          ./gradlew --no-daemon :main:tasks --all > /tmp/ics-tasks.txt
+          CANDIDATES=$(grep -oE '^assemble[A-Za-z0-9]*Ovpn23Release' /tmp/ics-tasks.txt | sort -u)
+          TASK=$(echo "$CANDIDATES" | grep -i skeleton | head -n1)
+          [ -n "$TASK" ] || TASK=$(echo "$CANDIDATES" | head -n1)
+          test -n "$TASK" || { echo "No ovpn23 release assemble task found"; exit 1; }
+          ./gradlew --no-daemon ":main:$TASK"
+          AAR=$(find main/build/outputs/aar -name '*.aar' | grep -i ovpn23 | grep -i release | head -n1)
+          test -n "$AAR" || { echo "ICS OpenVPN AAR not found"; exit 1; }
+          rm -rf /tmp/ics-aar && mkdir /tmp/ics-aar
+          cd /tmp/ics-aar
+          unzip -q "/tmp/ics-openvpn/$AAR"
+          META=META-INF/com/android/build/gradle/aar-metadata.properties
+          if [ -f "$META" ]; then
+            sed -i -E 's/^minCompileSdk=.*/minCompileSdk=35/; s/^minAgpVersion=.*/minAgpVersion=8.1.0/; /^minCompileSdkExtension=/d' "$META"
+          fi
+          mkdir -p "$GITHUB_WORKSPACE/app/libs"
+          zip -qr "$GITHUB_WORKSPACE/app/libs/ics-openvpn.aar" .
+          unzip -p "$GITHUB_WORKSPACE/app/libs/ics-openvpn.aar" classes.jar > /tmp/ics-classes.jar
+          jar tf /tmp/ics-classes.jar | grep -E 'core/(VpnStatus|ConfigParser|ProfileManager|OpenVPNService|VPNLaunchHelper)\.class'
+          test -s "$GITHUB_WORKSPACE/app/libs/ics-openvpn.aar"
 
       - name: Clean and build ARM APKs
         run: |
