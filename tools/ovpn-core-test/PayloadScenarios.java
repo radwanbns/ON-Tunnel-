@@ -29,10 +29,23 @@ public class PayloadScenarios {
                 else out.write(("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n" + body).getBytes());
                 out.flush();
                 out.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n".getBytes()); out.flush();
-                byte[] b = new byte[4096]; int n;   // raw backend: echo upper-case
-                while ((n = in.read(b)) >= 0) { out.write(new String(b, 0, n).toUpperCase().getBytes()); out.flush(); }
+                echoRaw(in, out);
             } catch (Exception e) { } }).start(); } } catch (Exception e) { } });
         t.setDaemon(true); t.start(); return ss;
+    }
+
+    static void echoRaw(InputStream in, OutputStream out) throws IOException {
+        byte[] b = new byte[4096]; int n; boolean first = true;
+        while ((n = in.read(b)) >= 0) {
+            if (first) { out.write(0); first = false; }
+            for (int i = 0; i < n; i++) b[i] = (byte) Character.toUpperCase((char) (b[i] & 0xff));
+            out.write(b, 0, n); out.flush();
+        }
+    }
+
+    static boolean rawEquals(String got, String expected) {
+        return got.length() == expected.length() + 1 && got.charAt(0) == 0
+                && got.substring(1).equals(expected);
     }
 
     static String roundTrip(int port, String data, int expect) throws Exception {
@@ -52,8 +65,7 @@ public class PayloadScenarios {
                 hdr(in);
                 if (reply != null) { out.write(reply.getBytes()); out.flush(); }
                 if (!thenEcho) { Thread.sleep(300); s.close(); return; }
-                byte[] b = new byte[4096]; int n;
-                while ((n = in.read(b)) >= 0) { out.write(new String(b, 0, n).toUpperCase().getBytes()); out.flush(); }
+                echoRaw(in, out);
             } catch (Exception e) { } }).start(); } } catch (Exception e) { } });
         t.setDaemon(true); t.start(); return ss;
     }
@@ -76,8 +88,8 @@ public class PayloadScenarios {
             TransportProxy p = proxy(base(srv.getLocalPort(), TransportConfig.MODE_PAYLOAD, PAYLOAD), new ArrayList<String>());
             int port = p.start();
             String got;
-            try { got = roundTrip(port, "openvpn-hello", 13); } catch (Exception e) { got = "<" + e.getClass().getSimpleName() + ">"; }
-            check("HTTP-payload mode, decoy body style " + style + ": raw stream after 101", got.equals("OPENVPN-HELLO"));
+            try { got = roundTrip(port, "openvpn-hello", 14); } catch (Exception e) { got = "<" + e.getClass().getSimpleName() + ">"; }
+            check("HTTP-payload mode, decoy body style " + style + ": raw stream after 101", rawEquals(got, "OPENVPN-HELLO"));
             check("  both requests reached the server in order", log.size() == 2 && log.get(0).startsWith("GET /cdn-cgi/trace") && log.get(1).startsWith("ACL /"));
             p.stop();
         }
@@ -92,8 +104,8 @@ public class PayloadScenarios {
             check("preflight completes both payload requests before local client starts", log.size() == 2
                     && log.get(0).startsWith("GET /cdn-cgi/trace") && log.get(1).startsWith("ACL /"));
             String got;
-            try { got = roundTrip(port, "first-attempt", 13); } catch (Exception e) { got = "<" + e.getClass().getSimpleName() + ">"; }
-            check("preflight session is reused for first OpenVPN connection", got.equals("FIRST-ATTEMPT"));
+            try { got = roundTrip(port, "first-attempt", 14); } catch (Exception e) { got = "<" + e.getClass().getSimpleName() + ">"; }
+            check("preflight session is reused for first OpenVPN connection", rawEquals(got, "FIRST-ATTEMPT"));
             p.stop();
         }
 
@@ -104,7 +116,7 @@ public class PayloadScenarios {
             TransportConfig c = base(srv.getLocalPort(), TransportConfig.MODE_WEBSOCKET, PAYLOAD);
             c.wsFraming = false;
             TransportProxy p = proxy(c, new ArrayList<String>());
-            String got; try { got = roundTrip(p.start(), "openvpn-hello", 13); } catch (Exception e) { got = "<" + e.getClass().getSimpleName() + ">"; }
+            String got; try { got = roundTrip(p.start(), "openvpn-hello", 14); } catch (Exception e) { got = "<" + e.getClass().getSimpleName() + ">"; }
             check("WebSocket mode, framing OFF, custom request: raw stream", got.equals("OPENVPN-HELLO"));
             p.stop();
         }
@@ -115,9 +127,9 @@ public class PayloadScenarios {
             TransportConfig c = base(srv.getLocalPort(), TransportConfig.MODE_PAYLOAD, "GET / HTTP/1.1[crlf][split]Host: [host][crlf]Upgrade: websocket[crlf][split][crlf]");
             TransportProxy p = proxy(c, new ArrayList<String>());
             long t0 = System.currentTimeMillis();
-            String got; try { got = roundTrip(p.start(), "abc", 3); } catch (Exception e) { got = "<" + e.getClass().getSimpleName() + ">"; }
+            String got; try { got = roundTrip(p.start(), "abc", 4); } catch (Exception e) { got = "<" + e.getClass().getSimpleName() + ">"; }
             long ms = System.currentTimeMillis() - t0;
-            check("[split] fragments: works and is fast (" + ms + " ms)", got.equals("ABC") && ms < 3000);
+            check("[split] fragments: works and is fast (" + ms + " ms)", rawEquals(got, "ABC") && ms < 3000);
             p.stop();
         }
 
@@ -137,8 +149,8 @@ public class PayloadScenarios {
             ServerSocket srv = simple("HTTP/1.1 200 Connection established\r\n\r\n", true);
             TransportConfig c = base(srv.getLocalPort(), TransportConfig.MODE_PAYLOAD, "CONNECT [host_port] HTTP/1.1[crlf]Host: [host_port][crlf][crlf]");
             TransportProxy p = proxy(c, new ArrayList<String>());
-            String got; try { got = roundTrip(p.start(), "xyz", 3); } catch (Exception e) { got = "<" + e.getClass().getSimpleName() + ">"; }
-            check("CONNECT 200 then raw", got.equals("XYZ"));
+            String got; try { got = roundTrip(p.start(), "xyz", 4); } catch (Exception e) { got = "<" + e.getClass().getSimpleName() + ">"; }
+            check("CONNECT 200 then raw", rawEquals(got, "XYZ"));
             p.stop();
         }
 
@@ -166,9 +178,9 @@ public class PayloadScenarios {
             int port = p.start();
             Socket c = new Socket("127.0.0.1", port); c.setSoTimeout(16000);
             c.getOutputStream().write("late".getBytes()); c.getOutputStream().flush();
-            byte[] buf = new byte[4]; String got;
+            byte[] buf = new byte[5]; String got;
             try { new DataInputStream(c.getInputStream()).readFully(buf); got = new String(buf); } catch (Exception e) { got = "<" + e.getClass().getSimpleName() + ">"; }
-            check("no reply: falls back to raw after the wait", got.equals("LATE"));
+            check("no reply: falls back to raw after the wait", rawEquals(got, "LATE"));
             p.stop();
         }
 
