@@ -49,9 +49,10 @@ class OvpnTunnelService : Service() {
         try {
             proxy?.stop()
             val t = profile.toTransport()
+            // Every resolved address is a candidate (IPv4 first): the relay tries them in order.
             val all = InetAddress.getAllByName(t.dialHost)
-            val addr = all.firstOrNull { it is Inet4Address } ?: all.first()
-            val p = TransportProxy(t, addr) { msg -> report { onRelayError?.invoke(msg) } }
+            val ordered = all.sortedBy { if (it is Inet4Address) 0 else 1 }.toTypedArray()
+            val p = TransportProxy(t, ordered) { msg -> report { onRelayError?.invoke(msg) } }
             val port = p.start()
             proxy = p
 
@@ -69,7 +70,7 @@ class OvpnTunnelService : Service() {
                     }
                 } catch (_: Exception) { }
             }
-            if (addr is Inet4Address) addr.hostAddress?.let { excludeIps.add(it) }
+            ordered.forEach { a -> if (a is Inet4Address) a.hostAddress?.let { excludeIps.add(it) } }
             addResolved(t.dialHost)
             addResolved(t.targetHost)
             addResolved(profile.proxyHost)
@@ -83,8 +84,9 @@ class OvpnTunnelService : Service() {
             val csv = excludeIps.joinToString(",")
             report { onReady?.invoke(port, csv.ifBlank { null }) }
         } catch (e: Exception) {
+            // Keep the service alive: the app may retry (auto-reconnect) and a background app cannot start a new
+            // foreground service. If it gives up, failOvpn() stops this service.
             report { onFailed?.invoke(e.message ?: "Could not start the transport relay") }
-            stopSelf()
         }
     }
 

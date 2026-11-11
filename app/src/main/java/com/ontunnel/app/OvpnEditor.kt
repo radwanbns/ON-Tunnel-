@@ -117,7 +117,7 @@ internal fun OvpnEditorScreen(
             Choice("Connection type", OvpnMode.toLabel(p.mode), OvpnMode.labels) { label ->
                 val mode = OvpnMode.fromLabel(label)
                 val autoPayload = when {
-                    mode != OvpnMode.PAYLOAD -> p.payload
+                    mode != OvpnMode.PAYLOAD && mode != OvpnMode.LEGACY -> p.payload
                     p.payload.isNotBlank() -> p.payload
                     p.proxyHost.isNotBlank() -> OvpnMode.CONNECT_TEMPLATE
                     else -> OvpnMode.PAYLOAD_TEMPLATE
@@ -131,12 +131,19 @@ internal fun OvpnEditorScreen(
                         (if (p.mode == OvpnMode.WEBSOCKET) "WebSocket upgrade" else "payload") +
                         ", then carries OpenVPN through it. The server must expose OpenVPN over TCP behind this endpoint."
                 )
+                if (p.mode == OvpnMode.LEGACY) {
+                    Hint(
+                        "HTTP Custom (legacy 5.1.26) style: your payload is sent exactly as written, the TLS certificate " +
+                            "is never validated (SNI can be any front domain), any 101 / 2xx reply – or no reply at all – switches " +
+                            "to a raw OpenVPN pipe, and WebSocket framing is never applied. A dropped handshake is retried automatically."
+                    )
+                }
                 if (remote != null && !remote.tcp) {
                     Hint("This profile lists only UDP remotes. In this mode ON Tunnel forces TCP, so the server must also accept OpenVPN over TCP (UDP-only servers cannot be tunnelled this way).", Amber)
                 }
                 Field("Connect to (optional)  host[:port]", p.serverOverride, { p = p.copy(serverOverride = it) })
 
-                if (p.mode == OvpnMode.PAYLOAD) {
+                if (p.mode != OvpnMode.WEBSOCKET) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Box(Modifier.weight(1f)) { Field("HTTP proxy host (optional)", p.proxyHost, { p = p.copy(proxyHost = it) }) }
                         Box(Modifier.width(100.dp)) {
@@ -162,7 +169,7 @@ internal fun OvpnEditorScreen(
                     }
                     Hint("HTTP payload mode always carries OpenVPN as a raw stream after the server's reply (also after “101 Switching Protocols”). With several requests in one payload, every reply except the last is read and ignored; the last one must be 101 or 2xx.")
                     Hint("For HTTP proxy on any port: set Proxy host/port and use CONNECT template (or leave payload empty – auto CONNECT).")
-                    Hint("Tags: [crlf] [cr] [lf] [host] [port] [host_port] [ua] [split] [delay_split]")
+                    Hint("Tags: [crlf] [cr] [lf] [crlf*N] [host] [port] [host_port] [netData] [ua] [rotate=a;b] [split] [delay_split] [instant_split]")
                 } else {
                     Field("WebSocket path", p.wsPath, { p = p.copy(wsPath = it) })
                     Field("Host header (optional)", p.wsHost, { p = p.copy(wsHost = it) })
@@ -173,14 +180,24 @@ internal fun OvpnEditorScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Hint("Leave the custom request empty to use a standard RFC 6455 upgrade. If you write one, include [ws_key] in the Sec-WebSocket-Key header.")
-                    SwitchRow("WebSocket framing (RFC 6455)", p.wsFraming) { p = p.copy(wsFraming = it) }
-                    Hint("Turn this OFF when the server switches to a plain TCP pipe after “101 Switching Protocols” (typical for injector payloads such as decoy GET + ACL). OFF behaves like HTTP payload mode.")
+                    Choice("WebSocket framing", OvpnMode.framingLabel(p.wsFraming, p.wsFramingMode), OvpnMode.framingLabels) { label ->
+                        p = when (label) {
+                            OvpnMode.framingLabels[1] -> p.copy(wsFraming = true, wsFramingMode = com.ontunnel.app.ovpn.TransportConfig.FRAMING_ALWAYS)
+                            OvpnMode.framingLabels[2] -> p.copy(wsFraming = false, wsFramingMode = com.ontunnel.app.ovpn.TransportConfig.FRAMING_NEVER)
+                            else -> p.copy(wsFraming = true, wsFramingMode = com.ontunnel.app.ovpn.TransportConfig.FRAMING_AUTO)
+                        }
+                    }
+                    Hint("Auto: frames OpenVPN only when the server answers like a real WebSocket server (Sec-WebSocket-Accept). Servers that become a plain TCP pipe after “101 Switching Protocols” (HTTP Custom / injector style) are detected and kept raw. Use “Raw” or “Always” only to force one behaviour.")
                 }
 
                 SwitchRow("TLS (HTTPS)", p.tls) { p = p.copy(tls = it) }
                 if (p.tls) {
                     Field("SNI", p.sni, { p = p.copy(sni = it) })
-                    SwitchRow("Allow insecure certificate", p.allowInsecure) { p = p.copy(allowInsecure = it) }
+                    if (p.mode == OvpnMode.LEGACY) {
+                        Hint("Certificate validation is always off in HTTP Custom (legacy) mode.")
+                    } else {
+                        SwitchRow("Allow insecure certificate", p.allowInsecure) { p = p.copy(allowInsecure = it) }
+                    }
                 }
             }
 

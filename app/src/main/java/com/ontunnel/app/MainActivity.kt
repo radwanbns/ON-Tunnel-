@@ -61,6 +61,11 @@ import java.net.URL
 
 internal enum class VpnStatus { Disconnected, Connecting, Connected, Disconnecting }
 
+/** OpenVPN: how many times a failed / stuck attempt is restarted automatically before giving up. */
+private const val OVPN_MAX_AUTO_RETRIES = 8
+/** OpenVPN: an attempt that is still not CONNECTED after this long is restarted. */
+private const val OVPN_STUCK_MS = 30_000L
+
 class MainActivity : ComponentActivity() {
     private var pendingConfig: String? = null
     private var status by mutableStateOf(if (ONTunnelVpnService.running) VpnStatus.Connected else VpnStatus.Disconnected)
@@ -77,6 +82,17 @@ class MainActivity : ComponentActivity() {
     private var activeProto = ""
     private val mainHandler = Handler(Looper.getMainLooper())
     private val ovpn = OpenVpnController(this) { state, message, level -> onOvpnStatus(state, message, level) }
+    /** True from "Connect" until the user (or a fatal error) stops the OpenVPN tunnel. Drives auto-reconnect. */
+    private var ovpnWanted = false
+    private var ovpnAutoCount = 0
+    private var ovpnWatchArmed = false
+    /** Fires when OpenVPN has been connecting / retrying for too long without reaching CONNECTED. */
+    private val ovpnStuckWatch = Runnable {
+        ovpnWatchArmed = false
+        if (ovpnWanted && activeProto == "openvpn" && status != VpnStatus.Connected) {
+            autoReconnectOvpn("Connection did not complete in time")
+        }
+    }
     private val ovpnTimeout = Runnable {
         if (status == VpnStatus.Connecting && !ovpnSawProgress) {
             failOvpn("OpenVPN for Android did not respond. Open it once, then try again.")
@@ -307,6 +323,10 @@ class MainActivity : ComponentActivity() {
         persistProto("openvpn")
         pendingOvpn = profile
         ovpnSawProgress = false
+        ovpnWanted = true
+        ovpnAutoCount = 0
+        ovpnWatchArmed = false
+        mainHandler.removeCallbacks(ovpnStuckWatch)
         status = VpnStatus.Connecting
         statusDetail = "Contacting OpenVPN for Android"
         mainHandler.removeCallbacks(ovpnTimeout)
@@ -345,7 +365,14 @@ class MainActivity : ComponentActivity() {
             statusDetail = "Starting OpenVPN"
             launchOvpn(profile.buildConfig(port, ip))
         }
-        OvpnTunnelService.onFailed = { msg -> failOvpn(msg) }
+        OvpnTunnelService.onFailed = { msg ->
+            if (msg.startsWith("App integrity") || msg.startsWith("Invalid") || msg.contains("is missing")) {
+                failOvpn(msg)
+            } else {
+                errorMessage = msg.take(300)
+                autoReconnectOvpn(msg)
+            }
+        }
         OvpnTunnelService.onRelayError = { msg -> if (status != VpnStatus.Connected) errorMessage = msg.take(300) }
         statusDetail = "Starting transport relay"
         try {
@@ -370,6 +397,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun stopOvpn() {
+        ovpnWanted = false
+        ovpnWatchArmed = false
+        mainHandler.removeCallbacks(ovpnStuckWatch)
         mainHandler.removeCallbacks(ovpnTimeout)
         clearRelayHooks()
         OvpnTunnelService.stop(this)
@@ -390,6 +420,9 @@ class MainActivity : ComponentActivity() {
         when {
             state == "CONNECTED" -> {
                 ovpnSawProgress = true
+                ovpnAutoCount = 0
+                ovpnWatchArmed = false
+                mainHandler.removeCallbacks(ovpnStuckWatch)
                 mainHandler.removeCallbacks(ovpnTimeout)
                 status = VpnStatus.Connected
                 statusDetail = null
@@ -401,6 +434,11 @@ class MainActivity : ComponentActivity() {
             state == "NOPROCESS" || state == "EXITING" -> {
                 // OpenVPN reports NOPROCESS right after we register, before our profile starts: ignore that one.
                 if (status == VpnStatus.Connecting && !ovpnSawProgress) return
+                // The engine quit while we were still trying to connect (not after a user disconnect): try again.
+                if (ovpnWanted && status == VpnStatus.Connecting) {
+                    autoReconnectOvpn("OpenVPN stopped before the tunnel was up")
+                    return
+                }
                 mainHandler.removeCallbacks(ovpnTimeout)
                 OvpnTunnelService.stop(this)
                 activeProto = ""
@@ -412,11 +450,18 @@ class MainActivity : ComponentActivity() {
                 ovpnSawProgress = true
                 mainHandler.removeCallbacks(ovpnTimeout)
                 if (status != VpnStatus.Disconnecting) status = VpnStatus.Connecting
+                // Not connected yet: make sure a stuck attempt is restarted automatically.
+                if (ovpnWanted && !ovpnWatchArmed) {
+                    ovpnWatchArmed = true
+                    mainHandler.postDelayed(ovpnStuckWatch, OVPN_STUCK_MS)
+                }
                 statusDetail = when (state) {
                     "CONNECTING", "TCP_CONNECT" -> "Connecting to server"
                     "WAIT" -> "Waiting for server"
                     "RESOLVE" -> "Resolving server address"
-                    "CONNECTRETRY" -> "Retrying connection" + if (message.isNotBlank()) " – ${message.take(60)}" else ""
+                    // The engine's own message is often just a counter such as "-2": hide plain numbers.
+                    "CONNECTRETRY" -> "Retrying connection" +
+                        (message.takeIf { it.isNotBlank() && !it.matches(Regex("-?\\d+")) }?.let { " – ${it.take(60)}" } ?: "")
                     "AUTH" -> "Authenticating"
                     "GET_CONFIG" -> "Getting configuration"
                     "ASSIGN_IP" -> "Assigning IP address"
@@ -427,6 +472,37 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * Restarts the whole OpenVPN attempt (engine + local relay) without user interaction. Used when the
+     * relay cannot start, OpenVPN quits while connecting, or an attempt is stuck in CONNECTRETRY / WAIT.
+     */
+    private fun autoReconnectOvpn(reason: String) {
+        val profile = pendingOvpn
+        if (!ovpnWanted || profile == null || activeProto != "openvpn") return
+        mainHandler.removeCallbacks(ovpnStuckWatch)
+        mainHandler.removeCallbacks(ovpnTimeout)
+        ovpnWatchArmed = false
+        if (ovpnAutoCount >= OVPN_MAX_AUTO_RETRIES) {
+            failOvpn("Could not connect after $OVPN_MAX_AUTO_RETRIES automatic attempts. ${errorMessage ?: reason}")
+            return
+        }
+        ovpnAutoCount++
+        ovpnSawProgress = false   // also makes the engine's NOPROCESS/EXITING from this teardown be ignored
+        status = VpnStatus.Connecting
+        statusDetail = "Reconnecting automatically ($ovpnAutoCount/$OVPN_MAX_AUTO_RETRIES)"
+        clearRelayHooks()
+        // The relay service is deliberately NOT stopped: it is already a foreground service, and Android 12+
+        // refuses to start a new one from the background. startOvpnProfile() re-sends ACTION_START and the
+        // running service just replaces its proxy.
+        ovpn.bind { err -> if (err == null) ovpn.disconnect() }
+        mainHandler.postDelayed({
+            if (ovpnWanted && activeProto == "openvpn") {
+                mainHandler.postDelayed(ovpnTimeout, 60_000L)
+                startOvpnProfile()
+            }
+        }, 2500L)
     }
 
     private fun openOvpnStore() {

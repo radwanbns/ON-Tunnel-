@@ -8,17 +8,29 @@ object OvpnMode {
     const val DIRECT = "direct"
     const val PAYLOAD = "payload"
     const val WEBSOCKET = "websocket"
+    /** Behaves like the old HTTP Custom (5.1.x) "payload + SSL/SNI" connection. */
+    const val LEGACY = "httpcustom"
 
-    val labels = listOf("Direct (standard)", "HTTP payload", "WebSocket")
+    val labels = listOf("Direct (standard)", "HTTP payload", "WebSocket", "HTTP Custom (legacy 5.1.26)")
     fun toLabel(mode: String) = when (mode) {
         PAYLOAD -> labels[1]
         WEBSOCKET -> labels[2]
+        LEGACY -> labels[3]
         else -> labels[0]
     }
     fun fromLabel(label: String) = when (label) {
         labels[1] -> PAYLOAD
         labels[2] -> WEBSOCKET
+        labels[3] -> LEGACY
         else -> DIRECT
+    }
+
+    /** WebSocket framing choices shown in the editor: label -> (wsFraming, wsFramingMode). */
+    val framingLabels = listOf("Auto (recommended)", "Always framed (RFC 6455)", "Raw after 101 (no framing)")
+    fun framingLabel(wsFraming: Boolean, mode: Int) = when {
+        !wsFraming || mode == TransportConfig.FRAMING_NEVER -> framingLabels[2]
+        mode == TransportConfig.FRAMING_ALWAYS -> framingLabels[1]
+        else -> framingLabels[0]
     }
 
     /** WebSocket-style upgrade then raw OpenVPN (common injector template). */
@@ -39,7 +51,10 @@ object OvpnMode {
  *
  * mode DIRECT    – the .ovpn is handed to OpenVPN for Android unchanged.
  * mode PAYLOAD   – local relay sends [payload] to the server, then carries raw OpenVPN (TCP) bytes.
- * mode WEBSOCKET – local relay performs an RFC 6455 handshake and carries OpenVPN inside binary frames.
+ * mode WEBSOCKET – local relay performs an RFC 6455 handshake; OpenVPN travels in binary frames only when the
+ *                  server proves it speaks RFC 6455 (Sec-WebSocket-Accept), otherwise as a raw pipe.
+ * mode LEGACY    – HTTP Custom 5.1.x style: payload sent as-is, TLS never validated, any 101/2xx (or silence)
+ *                  switches to a raw pipe.
  */
 data class OvpnProfile(
     val name: String = "OpenVPN",
@@ -59,11 +74,13 @@ data class OvpnProfile(
     val sni: String = "",
     val allowInsecure: Boolean = false,
     /** WebSocket mode: wrap OpenVPN in RFC 6455 frames after the 101. Off = raw pipe (injector-style servers). */
-    val wsFraming: Boolean = true
+    val wsFraming: Boolean = true,
+    /** TransportConfig.FRAMING_AUTO / ALWAYS / NEVER (only used while [wsFraming] is true). */
+    val wsFramingMode: Int = TransportConfig.FRAMING_AUTO
 ) {
     /** Payload / WebSocket always run over TCP, so they use the profile's first TCP remote when there is one. */
     val remote: OvpnConfigTools.Remote? get() = OvpnConfigTools.bestRemote(config, usesRelay)
-    val usesRelay: Boolean get() = mode == OvpnMode.PAYLOAD || mode == OvpnMode.WEBSOCKET
+    val usesRelay: Boolean get() = mode == OvpnMode.PAYLOAD || mode == OvpnMode.WEBSOCKET || mode == OvpnMode.LEGACY
     val needsAuth: Boolean get() = OvpnConfigTools.needsAuth(config)
 
     /** Returns an error message, or null when the profile can be used. */
@@ -83,7 +100,11 @@ data class OvpnProfile(
     fun toTransport(): TransportConfig {
         val r = remote
         val t = TransportConfig()
-        t.mode = if (mode == OvpnMode.WEBSOCKET) TransportConfig.MODE_WEBSOCKET else TransportConfig.MODE_PAYLOAD
+        t.mode = when (mode) {
+            OvpnMode.WEBSOCKET -> TransportConfig.MODE_WEBSOCKET
+            OvpnMode.LEGACY -> TransportConfig.MODE_LEGACY
+            else -> TransportConfig.MODE_PAYLOAD
+        }
         t.targetHost = r?.host ?: ""
         t.targetPort = r?.port ?: 1194
         if (proxyHost.isNotBlank()) {
@@ -110,6 +131,7 @@ data class OvpnProfile(
         t.wsPath = wsPath
         t.wsHost = wsHost.trim()
         t.wsFraming = wsFraming
+        t.framingMode = wsFramingMode
         return t
     }
 
@@ -121,6 +143,7 @@ data class OvpnProfile(
     fun badge(): String = when (mode) {
         OvpnMode.PAYLOAD -> "OpenVPN · Payload" + if (tls) " · TLS" else ""
         OvpnMode.WEBSOCKET -> "OpenVPN · WebSocket" + if (tls) " · TLS" else ""
+        OvpnMode.LEGACY -> "OpenVPN · HTTP Custom" + if (tls) " · TLS" else ""
         else -> "OpenVPN" + (remote?.let { if (it.tcp) " · TCP" else " · UDP" } ?: "")
     }
 
@@ -131,7 +154,7 @@ data class OvpnProfile(
         .put("proxyHost", proxyHost).put("proxyPort", proxyPort)
         .put("payload", payload).put("wsPath", wsPath).put("wsHost", wsHost)
         .put("tls", tls).put("sni", sni).put("allowInsecure", allowInsecure)
-        .put("wsFraming", wsFraming)
+        .put("wsFraming", wsFraming).put("wsFramingMode", wsFramingMode)
 
     companion object {
         fun fromJson(text: String): OvpnProfile? = try {
@@ -151,7 +174,8 @@ data class OvpnProfile(
                 tls = o.optBoolean("tls", false),
                 sni = o.optString("sni"),
                 allowInsecure = o.optBoolean("allowInsecure", false),
-                wsFraming = o.optBoolean("wsFraming", true)
+                wsFraming = o.optBoolean("wsFraming", true),
+                wsFramingMode = o.optInt("wsFramingMode", TransportConfig.FRAMING_AUTO)
             )
         } catch (_: Exception) { null }
 
