@@ -115,8 +115,17 @@ public final class OvpnConfigTools {
             sb.append("nobind\n");
             sb.append("persist-key\n");
             sb.append("persist-tun\n");
-            if (excludeIp != null && excludeIp.matches("^\\d{1,3}(\\.\\d{1,3}){3}$")) {
-                sb.append("route ").append(excludeIp).append(" 255.255.255.255 net_gateway\n");
+            // Bypass tunnel for every upstream edge IP (proxy / CDN / real remote).
+            // Same idea as HTTP Custom: route <ip> 255.255.255.255 net_gateway
+            if (excludeIp != null && !excludeIp.isEmpty()) {
+                java.util.LinkedHashSet<String> ips = new java.util.LinkedHashSet<>();
+                for (String part : excludeIp.split("[,;\\s]+")) {
+                    String ip = part.trim();
+                    if (ip.matches("^\\d{1,3}(\\.\\d{1,3}){3}$")) ips.add(ip);
+                }
+                for (String ip : ips) {
+                    sb.append("route ").append(ip).append(" 255.255.255.255 net_gateway\n");
+                }
             }
         }
         if (hasCreds) {
