@@ -117,7 +117,7 @@ public class PayloadScenarios {
             c.wsFraming = false;
             TransportProxy p = proxy(c, new ArrayList<String>());
             String got; try { got = roundTrip(p.start(), "openvpn-hello", 14); } catch (Exception e) { got = "<" + e.getClass().getSimpleName() + ">"; }
-            check("WebSocket mode, framing OFF, custom request: raw stream", got.equals("OPENVPN-HELLO"));
+            check("WebSocket mode, framing OFF, custom request: raw stream", rawEquals(got, "OPENVPN-HELLO"));
             p.stop();
         }
 
