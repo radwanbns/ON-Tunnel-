@@ -42,7 +42,8 @@ Username/password are optional and embedded as an inline `auth-user-pass` block.
 | --- | --- |
 | Direct | the `.ovpn` is passed to OpenVPN for Android unchanged (TCP or UDP) |
 | HTTP payload | a local relay dials the server (optionally via an HTTP proxy), sends your payload, waits for `101`/`2xx`, then carries raw OpenVPN-over-TCP bytes |
-| WebSocket | the relay performs a real RFC 6455 handshake and carries OpenVPN inside masked binary frames (ping/pong handled) |
+| WebSocket | the relay performs a real RFC 6455 handshake; OpenVPN is wrapped in masked binary frames only when the server proves it is a real WebSocket server (`Sec-WebSocket-Accept`), otherwise it is carried as a raw pipe (ping/pong handled) |
+| HTTP Custom (legacy 5.1.26) | behaves like the old HTTP Custom: payload sent as written, TLS certificate never validated (any SNI/front domain), any `101`/`2xx` reply or silence switches to a raw pipe, never framed |
 
 Payload / WebSocket can use TLS with a custom **SNI** (and an optional *allow insecure* switch), a **connect-to** override (CDN edge / front
 domain) and a custom Host header. Payload tags: `[crlf] [cr] [lf] [host] [port] [host_port] [ua] [ws_key] [split] [delay_split]`.
@@ -102,3 +103,22 @@ The source integration is committed, but a successful GitHub Actions build and r
   ("Server rejected the payload: HTTP/1.1 400 Bad Request").
 * **WebSocket mode** has a new *WebSocket framing (RFC 6455)* switch. Turn it off for servers that become a plain TCP pipe after the 101.
 * New *Decoy + ACL* payload template; tests in `tools/ovpn-core-test` (`PayloadScenarios`, `OvpnCoreTest`) run in CI.
+
+
+## Fix: WebSocket payload not connecting + "Retrying connection" (OpenVPN)
+
+* **WebSocket mode no longer corrupts raw servers.** The relay always wrapped OpenVPN in WebSocket frames after a `101`. Servers used with
+  HTTP Custom / injector payloads turn into a plain TCP pipe after the `101`, so every OpenVPN packet was garbage to them and OpenVPN just
+  kept retrying. Framing is now **Auto** by default: framed only if the reply contains `Sec-WebSocket-Accept` (every real RFC 6455 server sends it).
+  The editor has a *WebSocket framing* choice: Auto / Always framed / Raw after 101.
+* **New connection type "HTTP Custom (legacy 5.1.26)"** (see table above). Extra payload tags: `[crlf*N]` `[cr*N]` `[lf*N]` `[netData]`
+  `[rotate=a;b;c]` `[random=a;b;c]` `[instant_split]`.
+* **The relay retries by itself.** A failed dial, a connection closed during the handshake, a timeout or a `5xx` is retried up to 3 times
+  *before* OpenVPN notices (OpenVPN's first bytes just wait in the socket). Every resolved IP of the server is tried. A `3xx/4xx` answer is
+  definitive and reported immediately.
+* **OpenVPN never gives up.** The generated profile used `connect-retry-max 6`; after six failures OpenVPN quit. It is removed (unlimited) and
+  `hand-window 120` gives slow handshakes room.
+* **Automatic reconnect in the app.** If OpenVPN quits while connecting, the relay cannot start, or an attempt is still not connected after
+  30 s (stuck in CONNECTRETRY/WAIT), ON Tunnel restarts the engine + relay on its own (up to 8 times, counter shown in the status line). The
+  numeric noise in "Retrying connection – -2" is hidden. A user disconnect never triggers a reconnect.
+* New tests: `tools/ovpn-core-test/HttpCustomScenarios.java` (run in CI).
