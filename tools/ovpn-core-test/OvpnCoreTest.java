@@ -132,6 +132,10 @@ public class OvpnCoreTest {
         check("ws handshake fields", seen2[0].contains("GET /vpn HTTP/1.1") && seen2[0].contains("Host: cdn.example.com")
                 && seen2[0].contains("Sec-WebSocket-Key: ") && seen2[0].contains("Upgrade: websocket"));
         check("ws frames are masked", !seen2[0].contains("[UNMASKED]"));
+        long pongDeadline = System.currentTimeMillis() + 1500;
+        while (!seen2[0].contains("[PONG:hi]") && System.currentTimeMillis() < pongDeadline) {
+            Thread.sleep(10);
+        }
         check("ws ping answered with pong", seen2[0].contains("[PONG:hi]"));
         byte[] mid = new byte[3000]; Arrays.fill(mid, (byte) 'b');
         check("ws 16-bit length frame", roundTrip(wport, mid, 3000).equals(new String(mid).toUpperCase()));
