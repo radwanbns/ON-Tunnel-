@@ -61,7 +61,8 @@ data class OvpnProfile(
     /** WebSocket mode: wrap OpenVPN in RFC 6455 frames after the 101. Off = raw pipe (injector-style servers). */
     val wsFraming: Boolean = true
 ) {
-    val remote: OvpnConfigTools.Remote? get() = OvpnConfigTools.firstRemote(config)
+    /** Payload / WebSocket always run over TCP, so they use the profile's first TCP remote when there is one. */
+    val remote: OvpnConfigTools.Remote? get() = OvpnConfigTools.bestRemote(config, usesRelay)
     val usesRelay: Boolean get() = mode == OvpnMode.PAYLOAD || mode == OvpnMode.WEBSOCKET
     val needsAuth: Boolean get() = OvpnConfigTools.needsAuth(config)
 

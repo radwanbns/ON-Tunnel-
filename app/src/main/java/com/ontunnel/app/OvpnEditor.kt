@@ -132,7 +132,7 @@ internal fun OvpnEditorScreen(
                         ", then carries OpenVPN through it. The server must expose OpenVPN over TCP behind this endpoint."
                 )
                 if (remote != null && !remote.tcp) {
-                    Hint("Your profile says UDP – it will be forced to TCP in this mode.", Amber)
+                    Hint("This profile lists only UDP remotes. In this mode ON Tunnel forces TCP, so the server must also accept OpenVPN over TCP (UDP-only servers cannot be tunnelled this way).", Amber)
                 }
                 Field("Connect to (optional)  host[:port]", p.serverOverride, { p = p.copy(serverOverride = it) })
 
