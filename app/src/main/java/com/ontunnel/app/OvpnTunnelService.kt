@@ -55,9 +55,12 @@ class OvpnTunnelService : Service() {
             val p = TransportProxy(t, ordered) { msg -> report { onRelayError?.invoke(msg) } }
             val port = p.start()
             proxy = p
+            AppLogs.add(this, "OpenVPN relay listening on 127.0.0.1:$port")
             // Complete the upstream TCP/TLS + payload/WebSocket handshake first.
             // OpenVPN is launched only after a ready transport session is waiting in the relay.
+            AppLogs.add(this, "Preparing proxy and payload handshake")
             p.prepare()
+            AppLogs.add(this, "Proxy and payload handshake completed")
 
             val excludeIps = LinkedHashSet<String>()
             fun addResolved(host: String?) {
@@ -85,11 +88,11 @@ class OvpnTunnelService : Service() {
             }
 
             val csv = excludeIps.joinToString(",")
-            report { onReady?.invoke(port, csv.ifBlank { null }) }
+            report { AppLogs.add(this, "OpenVPN relay ready; launching engine"); onReady?.invoke(port, csv.ifBlank { null }) }
         } catch (e: Exception) {
             // Keep the service alive: the app may retry (auto-reconnect) and a background app cannot start a new
             // foreground service. If it gives up, failOvpn() stops this service.
-            report { onFailed?.invoke(e.message ?: "Could not start the transport relay") }
+            report { AppLogs.add(this, "OpenVPN relay error: ${e.message ?: e.javaClass.simpleName}"); onFailed?.invoke(e.message ?: "Could not start the transport relay") }
         }
     }
 
