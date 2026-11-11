@@ -55,6 +55,9 @@ class OvpnTunnelService : Service() {
             val p = TransportProxy(t, ordered) { msg -> report { onRelayError?.invoke(msg) } }
             val port = p.start()
             proxy = p
+            // Complete the upstream TCP/TLS + payload/WebSocket handshake first.
+            // OpenVPN is launched only after a ready transport session is waiting in the relay.
+            p.prepare()
 
             val excludeIps = LinkedHashSet<String>()
             fun addResolved(host: String?) {
