@@ -119,11 +119,6 @@ internal fun ONTunnelApp(
     var ovpnEditing by remember { mutableStateOf<OvpnEditorTarget?>(null) }
     var jsonEditing by remember { mutableStateOf<ServerEntry?>(null) }
 
-    // 0 = Home (Connect), 1 = Servers, 2 = Settings
-    var selectedTab by rememberSaveable { mutableStateOf(0) }
-    var showAutoSelectSheet by remember { mutableStateOf(false) }
-    var showServerList by remember { mutableStateOf(false) }
-    var drawerOpen by remember { mutableStateOf(false) }
     var dnsMode by remember { mutableStateOf(store.dnsMode) }
     var customDns by remember { mutableStateOf(store.customDns) }
 
@@ -730,20 +725,6 @@ internal fun ONTunnelApp(
 // ═══════════════════════════════════════════════════════════════════════
 
 
-@Composable
-private fun DrawerItem(icon: ImageVector, label: String, danger: Boolean = false, onClick: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, null, tint = if (danger) RedErr else Accent, modifier = Modifier.size(22.dp))
-        Spacer(Modifier.width(16.dp))
-        Text(label, color = if (danger) RedErr else TextMain, fontSize = 15.sp)
-    }
-}
 
 @Composable
 private fun SettingsPage(
@@ -768,7 +749,6 @@ private fun SettingsPage(
                 modifier = Modifier.padding(bottom = 4.dp, top = 4.dp)
             )
         }
-
         item {
             SettingsCard(title = "Appearance") {
                 val labels = listOf("Auto (System)", "Light", "Dark")
@@ -793,7 +773,6 @@ private fun SettingsPage(
                 }
             }
         }
-
         item {
             SettingsCard(title = "DNS") {
                 val options = listOf(
@@ -833,7 +812,6 @@ private fun SettingsPage(
                 }
             }
         }
-
         item {
             Text(
                 "ON Tunnel",
@@ -861,6 +839,7 @@ private fun SettingsCard(title: String, content: @Composable ColumnScope.() -> U
         content()
     }
 }
+
 
 private fun formatElapsed(totalSeconds: Long): String {
     val h = totalSeconds / 3600
@@ -1036,7 +1015,7 @@ private fun v2rayBadge(config: String): String = try {
     "V2Ray"
 }
 
-@OptIn(Expprivate fun ServerCard(
+private fun ServerCard(
     entry: ServerEntry,
     badge: String,
     selected: Boolean,
