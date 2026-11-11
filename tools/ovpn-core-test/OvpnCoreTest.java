@@ -37,7 +37,14 @@ public class OvpnCoreTest {
                         try {
                             InputStream in = s.getInputStream(); OutputStream out = s.getOutputStream();
                             String h = readHdr(in); seenHeaders[0] = h;
-                            out.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n\r\n".getBytes()); out.flush();
+                            // A real RFC 6455 server proves itself with Sec-WebSocket-Accept; raw "pipe" servers don't.
+                            String acc = "";
+                            if (ws) {
+                                java.util.regex.Matcher km = java.util.regex.Pattern.compile("(?i)Sec-WebSocket-Key:\\s*(\\S+)").matcher(h);
+                                if (km.find()) acc = "Sec-WebSocket-Accept: " + java.util.Base64.getEncoder().encodeToString(
+                                        MessageDigest.getInstance("SHA-1").digest((km.group(1) + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").getBytes())) + "\r\n";
+                            }
+                            out.write(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n" + acc + "\r\n").getBytes()); out.flush();
                             if (!ws) {
                                 byte[] b = new byte[4096]; int n;
                                 while ((n = in.read(b)) >= 0) { out.write(new String(b, 0, n).toUpperCase().getBytes()); out.flush(); }
