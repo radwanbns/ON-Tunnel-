@@ -1203,10 +1203,9 @@ private fun LogsScreen(onBack: () -> Unit) {
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("Logs", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Home") } },
                 actions = {
                     IconButton(onClick = {
-                        val content = entries.joinToString("\\n") { "${it.time}  ${it.message}" }
+                        val content = entries.joinToString("\n") { "${it.time}  ${it.message}" }
                         if (content.isBlank()) {
                             Toast.makeText(context, "No logs to share", Toast.LENGTH_SHORT).show()
                         } else {
