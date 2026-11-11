@@ -25,6 +25,10 @@ object OvpnMode {
     const val PAYLOAD_TEMPLATE =
         "GET / HTTP/1.1[crlf]Host: [host][crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf][crlf]"
 
+    /** Decoy request first (its reply is read and ignored), then the upgrade request. Raw OpenVPN after the 101. */
+    const val DECOY_TEMPLATE =
+        "GET /cdn-cgi/trace HTTP/1.1[crlf]Host: [host][crlf][crlf]ACL / HTTP/1.1[crlf]Host: [host][crlf]Upgrade: Websocket[crlf]Connection: Keep-Alive[crlf]User-Agent: [ua][crlf]Upgrade: websocket[crlf][crlf]"
+
     /** Classic HTTP CONNECT through a proxy – works with any target port. */
     const val CONNECT_TEMPLATE =
         "CONNECT [host_port] HTTP/1.1[crlf]Host: [host_port][crlf]Proxy-Connection: Keep-Alive[crlf]User-Agent: [ua][crlf][crlf]"
@@ -53,7 +57,9 @@ data class OvpnProfile(
     val wsHost: String = "",
     val tls: Boolean = false,
     val sni: String = "",
-    val allowInsecure: Boolean = false
+    val allowInsecure: Boolean = false,
+    /** WebSocket mode: wrap OpenVPN in RFC 6455 frames after the 101. Off = raw pipe (injector-style servers). */
+    val wsFraming: Boolean = true
 ) {
     val remote: OvpnConfigTools.Remote? get() = OvpnConfigTools.firstRemote(config)
     val usesRelay: Boolean get() = mode == OvpnMode.PAYLOAD || mode == OvpnMode.WEBSOCKET
@@ -102,6 +108,7 @@ data class OvpnProfile(
         t.payload = payload
         t.wsPath = wsPath
         t.wsHost = wsHost.trim()
+        t.wsFraming = wsFraming
         return t
     }
 
@@ -123,6 +130,7 @@ data class OvpnProfile(
         .put("proxyHost", proxyHost).put("proxyPort", proxyPort)
         .put("payload", payload).put("wsPath", wsPath).put("wsHost", wsHost)
         .put("tls", tls).put("sni", sni).put("allowInsecure", allowInsecure)
+        .put("wsFraming", wsFraming)
 
     companion object {
         fun fromJson(text: String): OvpnProfile? = try {
@@ -141,7 +149,8 @@ data class OvpnProfile(
                 wsHost = o.optString("wsHost"),
                 tls = o.optBoolean("tls", false),
                 sni = o.optString("sni"),
-                allowInsecure = o.optBoolean("allowInsecure", false)
+                allowInsecure = o.optBoolean("allowInsecure", false),
+                wsFraming = o.optBoolean("wsFraming", true)
             )
         } catch (_: Exception) { null }
 
