@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat
 import com.ontunnel.app.ovpn.TransportProxy
 import java.net.Inet4Address
 import java.net.InetAddress
+import java.util.LinkedHashSet
 
 /**
  * Foreground service that keeps the loopback relay alive while OpenVPN for Android
@@ -48,13 +49,39 @@ class OvpnTunnelService : Service() {
         try {
             proxy?.stop()
             val t = profile.toTransport()
-            // Resolve once, BEFORE the tunnel is up; the same IP is then excluded from the tunnel.
             val all = InetAddress.getAllByName(t.dialHost)
             val addr = all.firstOrNull { it is Inet4Address } ?: all.first()
             val p = TransportProxy(t, addr) { msg -> report { onRelayError?.invoke(msg) } }
             val port = p.start()
             proxy = p
-            report { onReady?.invoke(port, if (addr is Inet4Address) addr.hostAddress else null) }
+
+            val excludeIps = LinkedHashSet<String>()
+            fun addResolved(host: String?) {
+                if (host.isNullOrBlank()) return
+                val h = host.trim()
+                if (h.matches(Regex("""^\d{1,3}(\.\d{1,3}){3}$"""))) {
+                    excludeIps.add(h)
+                    return
+                }
+                try {
+                    InetAddress.getAllByName(h).forEach { a ->
+                        if (a is Inet4Address) a.hostAddress?.let { excludeIps.add(it) }
+                    }
+                } catch (_: Exception) { }
+            }
+            if (addr is Inet4Address) addr.hostAddress?.let { excludeIps.add(it) }
+            addResolved(t.dialHost)
+            addResolved(t.targetHost)
+            addResolved(profile.proxyHost)
+            if (profile.serverOverride.isNotBlank()) {
+                addResolved(profile.serverOverride.substringBefore(":"))
+            }
+            HOST_IN_PAYLOAD.findAll(profile.payload).forEach { m ->
+                addResolved(m.groupValues[1].trim())
+            }
+
+            val csv = excludeIps.joinToString(",")
+            report { onReady?.invoke(port, csv.ifBlank { null }) }
         } catch (e: Exception) {
             report { onFailed?.invoke(e.message ?: "Could not start the transport relay") }
             stopSelf()
@@ -89,7 +116,10 @@ class OvpnTunnelService : Service() {
         const val EXTRA_PROFILE = "profile"
         const val NOTIFICATION_ID = 7002
 
-        /** (localPort, upstreamIpv4OrNull) – relay is listening. Delivered on the main thread. */
+        private val HOST_IN_PAYLOAD =
+            Regex("""(?i)Host:\s*([^\r\n\s,:]+)""")
+
+        /** (localPort, comma-separated upstream IPv4s for net_gateway routes). */
         @Volatile var onReady: ((Int, String?) -> Unit)? = null
         @Volatile var onFailed: ((String) -> Unit)? = null
         @Volatile var onRelayError: ((String) -> Unit)? = null
