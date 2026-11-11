@@ -120,11 +120,13 @@ class MainActivity : ComponentActivity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (activeProto == "openvpn") return
             when (intent?.getStringExtra(ONTunnelVpnService.EXTRA_STATE)) {
-                "connected" -> { status = VpnStatus.Connected; errorMessage = null }
-                "disconnected" -> { status = VpnStatus.Disconnected; if (activeProto == "v2ray") activeProto = "" }
+                "connected" -> { AppLogs.add(this@MainActivity, "V2Ray tunnel connected"); status = VpnStatus.Connected; errorMessage = null }
+                "disconnected" -> { AppLogs.add(this@MainActivity, "V2Ray tunnel disconnected"); status = VpnStatus.Disconnected; if (activeProto == "v2ray") activeProto = "" }
                 "error" -> {
+                    val detail = intent.getStringExtra(ONTunnelVpnService.EXTRA_ERROR).orEmpty().take(300)
+                    AppLogs.add(this@MainActivity, "V2Ray error: $detail")
                     status = VpnStatus.Disconnected
-                    errorMessage = intent.getStringExtra(ONTunnelVpnService.EXTRA_ERROR).orEmpty().take(300)
+                    errorMessage = detail
                 }
             }
         }
@@ -294,6 +296,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun disconnect() {
+        AppLogs.add(this, "User requested VPN disconnect")
         if (activeProto == "openvpn") {
             stopOvpn()
             activeProto = ""
@@ -312,7 +315,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun connectOpenVpn(profile: OvpnProfile) {
-        profile.validate()?.let { errorMessage = it; return }
+        AppLogs.add(this, "OpenVPN connection requested: ${profile.name}")
+        profile.validate()?.let { AppLogs.add(this, "OpenVPN profile error: $it"); errorMessage = it; return }
         if (!OpenVpnController.isInstalled(this)) { ovpnMissing = true; return }
         if (activeProto == "v2ray") {
             startService(Intent(this, ONTunnelVpnService::class.java).setAction(ONTunnelVpnService.ACTION_STOP))
@@ -408,6 +412,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun failOvpn(message: String) {
+        AppLogs.add(this, "OpenVPN failed: ${message.take(300)}")
         stopOvpn()
         activeProto = ""
         status = VpnStatus.Disconnected
@@ -417,6 +422,7 @@ class MainActivity : ComponentActivity() {
 
     private fun onOvpnStatus(state: String, message: String, level: String) {
         if (activeProto != "openvpn") return
+        if (state.isNotBlank()) AppLogs.add(this, "OpenVPN [$level] $state: ${message.take(180)}")
         when {
             state == "CONNECTED" -> {
                 ovpnSawProgress = true
@@ -492,6 +498,7 @@ class MainActivity : ComponentActivity() {
         ovpnSawProgress = false   // also makes the engine's NOPROCESS/EXITING from this teardown be ignored
         status = VpnStatus.Connecting
         statusDetail = "Reconnecting automatically ($ovpnAutoCount/$OVPN_MAX_AUTO_RETRIES)"
+        AppLogs.add(this, "OpenVPN automatic retry $ovpnAutoCount/$OVPN_MAX_AUTO_RETRIES: ${reason.take(180)}")
         clearRelayHooks()
         // The relay service is deliberately NOT stopped: it is already a foreground service, and Android 12+
         // refuses to start a new one from the background. startOvpnProfile() re-sends ACTION_START and the
