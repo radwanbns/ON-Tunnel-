@@ -133,17 +133,13 @@ jobs:
           set -euo pipefail
 
           universal="app/build/outputs/apk/debug/app-universal-debug.apk"
-
           if [ ! -f "$universal" ]; then
-            echo "::error::Universal APK was not generated."
+            echo "::error::ARM Universal APK was not generated."
             ls -lah app/build/outputs/apk/debug/
             exit 1
           fi
 
-          echo "Checking ZIP integrity..."
-          unzip -t "$universal"
-
-          echo "Checking ARM architectures..."
+          unzip -t "$universal" >/dev/null
           entries="$(unzip -Z1 "$universal")"
 
           for abi in arm64-v8a armeabi-v7a; do
@@ -153,7 +149,19 @@ jobs:
             fi
           done
 
-          if grep -qE '^lib/(x86|x86_64)/.*\.so
+          if grep -qE '^lib/(x86|x86_64)/.*\.so$' <<< "$entries"; then
+            echo "::error::x86 libraries must not be bundled in the Universal APK."
+            exit 1
+          fi
+
+          for abi in x86 x86_64; do
+            apk="app/build/outputs/apk/debug/app-${abi}-debug.apk"
+            test -f "$apk"
+            unzip -t "$apk" >/dev/null
+            unzip -Z1 "$apk" | grep -q "^lib/${abi}/.*\.so$"
+          done
+
+          echo "Verified: Universal is ARM-only; x86 and x86_64 are separate APKs."
 
       - name: Verify signatures
         shell: bash
