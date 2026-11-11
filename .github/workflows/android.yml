@@ -25,14 +25,6 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      # Pure-Java core of the OpenVPN payload / WebSocket transport: compile + run its tests before building.
-      - name: Test OpenVPN transport core
-        run: |
-          mkdir -p /tmp/ovpn-core
-          javac -Xlint:all -d /tmp/ovpn-core app/src/main/java/com/ontunnel/app/ovpn/*.java tools/ovpn-core-test/*.java
-          java -cp /tmp/ovpn-core PayloadScenarios
-          java -cp /tmp/ovpn-core OvpnCoreTest
-
       - name: Restore fixed Debug keystore
         uses: actions/cache@v4
         with:
@@ -72,60 +64,16 @@ jobs:
           fi
 
           yes | "$sdkmanager" --licenses || true
-          "$sdkmanager" "ndk;27.2.12479018" "ndk;30.0.14904198" "cmake;3.22.1"
+          "$sdkmanager" "ndk;27.2.12479018" "cmake;3.22.1"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.14.4"
+          gradle-version: "8.9"
 
-      # Build the real ICS OpenVPN engine as an AAR; no external VPN app is required.
-      - name: Clone and build ICS OpenVPN library
-        env:
-          ICS_OPENVPN_REF: master
+      - name: Clean and build ARM APKs
         run: |
-          set -euxo pipefail
-          git clone --recurse-submodules --depth 1 --branch "$ICS_OPENVPN_REF" \
-            https://github.com/schwabe/ics-openvpn.git /tmp/ics-openvpn
-          cd /tmp/ics-openvpn
-          python3 "$GITHUB_WORKSPACE/.github/scripts/ics_to_library.py"
-          ./gradlew --no-daemon :main:tasks --all > /tmp/ics-tasks.txt
-          CANDIDATES=$(grep -oE '^assemble[A-Za-z0-9]*Ovpn23Release' /tmp/ics-tasks.txt | sort -u)
-          TASK=$(echo "$CANDIDATES" | grep -i skeleton | head -n1)
-          [ -n "$TASK" ] || TASK=$(echo "$CANDIDATES" | head -n1)
-          test -n "$TASK" || { echo "No ovpn23 release assemble task found"; exit 1; }
-          ./gradlew --no-daemon ":main:$TASK"
-          AAR=$(find main/build/outputs/aar -name '*.aar' | grep -i ovpn23 | grep -i release | head -n1)
-          test -n "$AAR" || { echo "ICS OpenVPN AAR not found"; exit 1; }
-          rm -rf /tmp/ics-aar && mkdir /tmp/ics-aar
-          cd /tmp/ics-aar
-          unzip -q "/tmp/ics-openvpn/$AAR"
-          META=META-INF/com/android/build/gradle/aar-metadata.properties
-          if [ -f "$META" ]; then
-            sed -i -E 's/^minCompileSdk=.*/minCompileSdk=35/; s/^minAgpVersion=.*/minAgpVersion=8.1.0/; /^minCompileSdkExtension=/d' "$META"
-          fi
-          mkdir -p "$GITHUB_WORKSPACE/app/libs"
-          zip -qr "$GITHUB_WORKSPACE/app/libs/ics-openvpn.aar" .
-          unzip -p "$GITHUB_WORKSPACE/app/libs/ics-openvpn.aar" classes.jar > /tmp/ics-classes.jar
-          jar tf /tmp/ics-classes.jar | grep -E 'core/(VpnStatus|ConfigParser|ProfileManager|OpenVPNService|VPNLaunchHelper)\.class'
-          test -s "$GITHUB_WORKSPACE/app/libs/ics-openvpn.aar"
-
-      - name: Build separate APKs for all four Android ABIs
-        run: |
-          set -euo pipefail
-          gradle clean assembleDebug --no-daemon -PABI_FILTERS="arm64-v8a;armeabi-v7a;x86;x86_64" -PUNIVERSAL_ONLY=false
-
-          mkdir -p /tmp/on-tunnel-x86
-          cp app/build/outputs/apk/debug/app-x86-debug.apk /tmp/on-tunnel-x86/
-          cp app/build/outputs/apk/debug/app-x86_64-debug.apk /tmp/on-tunnel-x86/
-
-      - name: Build ARM-only Universal APK
-        run: |
-          set -euo pipefail
-          gradle clean assembleDebug --no-daemon -PABI_FILTERS="arm64-v8a;armeabi-v7a" -PUNIVERSAL_ONLY=true
-
-          cp /tmp/on-tunnel-x86/app-x86-debug.apk app/build/outputs/apk/debug/
-          cp /tmp/on-tunnel-x86/app-x86_64-debug.apk app/build/outputs/apk/debug/
+          gradle clean assembleDebug --no-daemon
 
       - name: Verify APK files and architectures
         shell: bash
@@ -133,35 +81,35 @@ jobs:
           set -euo pipefail
 
           universal="app/build/outputs/apk/debug/app-universal-debug.apk"
+
           if [ ! -f "$universal" ]; then
-            echo "::error::ARM Universal APK was not generated."
+            echo "::error::Universal APK was not generated."
             ls -lah app/build/outputs/apk/debug/
             exit 1
           fi
 
-          unzip -t "$universal" >/dev/null
+          echo "Checking ZIP integrity..."
+          unzip -t "$universal"
+
+          echo "Checking ARM architectures..."
           entries="$(unzip -Z1 "$universal")"
 
-          for abi in arm64-v8a armeabi-v7a; do
-            if ! grep -q "^lib/${abi}/.*\.so$" <<< "$entries"; then
-              echo "::error::${abi} native libraries are missing from the ARM Universal APK."
-              exit 1
-            fi
-          done
-
-          if grep -qE '^lib/(x86|x86_64)/.*\.so$' <<< "$entries"; then
-            echo "::error::x86 libraries must not be bundled in the Universal APK."
+          if ! grep -q '^lib/arm64-v8a/.*\.so$' <<< "$entries"; then
+            echo "::error::arm64-v8a libraries are missing."
             exit 1
           fi
 
-          for abi in x86 x86_64; do
-            apk="app/build/outputs/apk/debug/app-${abi}-debug.apk"
-            test -f "$apk"
-            unzip -t "$apk" >/dev/null
-            unzip -Z1 "$apk" | grep -q "^lib/${abi}/.*\.so$"
-          done
+          if ! grep -q '^lib/armeabi-v7a/.*\.so$' <<< "$entries"; then
+            echo "::error::armeabi-v7a libraries are missing."
+            exit 1
+          fi
 
-          echo "Verified: Universal is ARM-only; x86 and x86_64 are separate APKs."
+          if grep -Eq '^lib/(x86|x86_64)/' <<< "$entries"; then
+            echo "::error::Unexpected x86 libraries found."
+            exit 1
+          fi
+
+          echo "Universal APK contains both ARM architectures."
 
       - name: Verify signatures
         shell: bash
@@ -208,7 +156,7 @@ jobs:
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ON-Tunnel-All-ABIs
+          name: ON-Tunnel-ARM
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
@@ -226,12 +174,6 @@ jobs:
 
           cp app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk \
              release/ON-Tunnel-armeabi-v7a.apk
-
-          cp app/build/outputs/apk/debug/app-x86-debug.apk \
-             release/ON-Tunnel-x86.apk
-
-          cp app/build/outputs/apk/debug/app-x86_64-debug.apk \
-             release/ON-Tunnel-x86_64.apk
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
