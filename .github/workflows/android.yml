@@ -110,9 +110,22 @@ jobs:
           jar tf /tmp/ics-classes.jar | grep -E 'core/(VpnStatus|ConfigParser|ProfileManager|OpenVPNService|VPNLaunchHelper)\.class'
           test -s "$GITHUB_WORKSPACE/app/libs/ics-openvpn.aar"
 
-      - name: Clean and build APKs for all Android ABIs
+      - name: Build separate APKs for all four Android ABIs
         run: |
-          gradle clean assembleDebug --no-daemon
+          set -euo pipefail
+          gradle clean assembleDebug --no-daemon -PABI_FILTERS="arm64-v8a;armeabi-v7a;x86;x86_64" -PUNIVERSAL_ONLY=false
+
+          mkdir -p /tmp/on-tunnel-x86
+          cp app/build/outputs/apk/debug/app-x86-debug.apk /tmp/on-tunnel-x86/
+          cp app/build/outputs/apk/debug/app-x86_64-debug.apk /tmp/on-tunnel-x86/
+
+      - name: Build ARM-only Universal APK
+        run: |
+          set -euo pipefail
+          gradle clean assembleDebug --no-daemon -PABI_FILTERS="arm64-v8a;armeabi-v7a" -PUNIVERSAL_ONLY=true
+
+          cp /tmp/on-tunnel-x86/app-x86-debug.apk app/build/outputs/apk/debug/
+          cp /tmp/on-tunnel-x86/app-x86_64-debug.apk app/build/outputs/apk/debug/
 
       - name: Verify APK files and architectures
         shell: bash
@@ -133,14 +146,105 @@ jobs:
           echo "Checking ARM architectures..."
           entries="$(unzip -Z1 "$universal")"
 
-          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+          for abi in arm64-v8a armeabi-v7a; do
             if ! grep -q "^lib/${abi}/.*\.so$" <<< "$entries"; then
-              echo "::error::${abi} native libraries are missing from the universal APK."
+              echo "::error::${abi} native libraries are missing from the ARM Universal APK."
               exit 1
             fi
           done
 
-          echo "Universal APK contains all four requested architectures."
+          if grep -qE '^lib/(x86|x86_64)/.*\.so
+
+      - name: Verify signatures
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          expected="$(keytool -list -v \
+            -keystore ~/.android/debug.keystore \
+            -storepass android \
+            -alias androiddebugkey |
+            awk -F': ' '/SHA256:/{print $2; exit}' |
+            tr -d ':' | tr '[:lower:]' '[:upper:]')"
+
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+
+          count=0
+
+          for apk in app/build/outputs/apk/debug/*.apk; do
+            [ -f "$apk" ] || continue
+
+            echo "Checking: $apk"
+
+            unzip -t "$apk" >/dev/null
+
+            output="$("$apksigner" verify --print-certs "$apk")"
+            echo "$output"
+
+            actual="$(echo "$output" |
+              awk '/certificate SHA-256 digest:/ {print $NF; exit}' |
+              tr -d ':' | tr '[:lower:]' '[:upper:]')"
+
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::Invalid APK signature."
+              exit 1
+            fi
+
+            count=$((count + 1))
+          done
+
+          test "$count" -gt 0
+          echo "All APK files passed verification."
+
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ON-Tunnel-All-ABIs
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Prepare GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          mkdir -p release
+
+          cp app/build/outputs/apk/debug/app-universal-debug.apk \
+             release/ON-Tunnel-Universal.apk
+
+          cp app/build/outputs/apk/debug/app-arm64-v8a-debug.apk \
+             release/ON-Tunnel-arm64-v8a.apk
+
+          cp app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk \
+             release/ON-Tunnel-armeabi-v7a.apk
+
+          cp app/build/outputs/apk/debug/app-x86-debug.apk \
+             release/ON-Tunnel-x86.apk
+
+          cp app/build/outputs/apk/debug/app-x86_64-debug.apk \
+             release/ON-Tunnel-x86_64.apk
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ON Tunnel ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release/*.apk
+ <<< "$entries"; then
+            echo "::error::x86 libraries must not be bundled in the Universal APK."
+            exit 1
+          fi
+
+          echo "Universal APK contains ARM only; x86 variants are separate APKs."
+
+          for abi in x86 x86_64; do
+            apk="app/build/outputs/apk/debug/app-${abi}-debug.apk"
+            test -f "$apk"
+            unzip -t "$apk" >/dev/null
+            unzip -Z1 "$apk" | grep -q "^lib/${abi}/.*\.so$"
+          done
 
       - name: Verify signatures
         shell: bash
