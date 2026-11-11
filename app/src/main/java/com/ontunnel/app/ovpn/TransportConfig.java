@@ -19,4 +19,9 @@ public final class TransportConfig {
     public String payload = "";
     public String wsPath = "/";
     public String wsHost = "";
+    /**
+     * WebSocket mode only: after the 101 reply, wrap OpenVPN bytes in RFC 6455 binary frames (true).
+     * Turn off for injector-style servers that switch to a plain TCP pipe after the 101 (false).
+     */
+    public boolean wsFraming = true;
 }

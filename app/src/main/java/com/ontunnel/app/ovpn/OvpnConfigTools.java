@@ -32,24 +32,98 @@ public final class OvpnConfigTools {
         if (text == null) return false;
         String t = text.trim();
         if (t.startsWith("{") || t.contains("://")) return false;
-        boolean hasRemote = Pattern.compile("(?m)^\\s*remote\\s+\\S+").matcher(t).find();
+        boolean hasRemote = Pattern.compile("(?mi)^[ \\t]*remote[ \\t]+\\S+").matcher(t).find();
         boolean hasHint = Pattern.compile("(?m)^\\s*(client|dev\\s+tun|dev\\s+tap|<ca>|<connection>|auth-user-pass|remote-cert-tls)").matcher(t).find();
         return hasRemote && hasHint;
     }
 
-    public static Remote firstRemote(String cfg) {
-        if (cfg == null) return null;
-        String globalProto = "udp";
-        Matcher pm = Pattern.compile("(?m)^\\s*proto\\s+(\\S+)").matcher(cfg);
-        if (pm.find()) globalProto = pm.group(1).toLowerCase(Locale.ROOT);
-        Matcher m = Pattern.compile("(?m)^\\s*remote\\s+(\\S+)(?:\\s+(\\d+))?(?:\\s+(\\S+))?").matcher(cfg);
-        if (!m.find()) return null;
-        int port = 1194;
-        if (m.group(2) != null) {
-            try { port = Integer.parseInt(m.group(2)); } catch (NumberFormatException ignored) { }
+    private static final Pattern REMOTE_LINE =
+            Pattern.compile("^remote[ \\t]+(\\S+)(?:[ \\t]+(\\d+))?(?:[ \\t]+(\\S+))?", Pattern.CASE_INSENSITIVE);
+    private static final Pattern PROTO_LINE =
+            Pattern.compile("^proto[ \\t]+(\\S+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern PROTO_WORD =
+            Pattern.compile("^(udp|tcp)[46]?(-client|-server)?$", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Every "remote" of the profile in file order, with the protocol that applies to it:
+     * the proto given on the remote line, else the proto of its enclosing &lt;connection&gt; block,
+     * else the global "proto" (default udp). Lines inside certificate/key blocks are ignored.
+     */
+    public static List<Remote> allRemotes(String cfg) {
+        List<Remote> out = new ArrayList<>();
+        if (cfg == null) return out;
+        String[] lines = cfg.replace("\r\n", "\n").replace('\r', '\n').split("\n", -1);
+
+        String globalProto = null;
+        // pass 1: global proto (outside any block)
+        String open = null;
+        for (String raw : lines) {
+            String line = raw.trim();
+            if (open != null) { if (line.equalsIgnoreCase("</" + open + ">")) open = null; continue; }
+            Matcher bm = BLOCK_OPEN.matcher(line);
+            if (bm.matches()) { open = bm.group(1); continue; }
+            Matcher pm = PROTO_LINE.matcher(line);
+            if (globalProto == null && pm.find()) globalProto = pm.group(1).toLowerCase(Locale.ROOT);
         }
-        String proto = m.group(3) != null ? m.group(3).toLowerCase(Locale.ROOT) : globalProto;
-        return new Remote(m.group(1), port, proto.startsWith("tcp"));
+        if (globalProto == null) globalProto = "udp";
+
+        // pass 2: remotes, tracking <connection> blocks
+        open = null;
+        List<String[]> pending = new ArrayList<>();   // host, port, explicitProto
+        List<Integer> blockOf = new ArrayList<>();
+        List<String> blockProto = new ArrayList<>();
+        int block = -1;
+        for (String raw : lines) {
+            String line = raw.trim();
+            if (open != null) {
+                if (line.equalsIgnoreCase("</" + open + ">")) { open = null; block = -1; continue; }
+                if (block >= 0) {
+                    Matcher rm = REMOTE_LINE.matcher(line);
+                    Matcher pm = PROTO_LINE.matcher(line);
+                    if (rm.find()) { pending.add(new String[]{rm.group(1), rm.group(2), rm.group(3)}); blockOf.add(block); }
+                    else if (pm.find()) blockProto.set(block, pm.group(1).toLowerCase(Locale.ROOT));
+                }
+                continue;
+            }
+            Matcher bm = BLOCK_OPEN.matcher(line);
+            if (bm.matches()) {
+                open = bm.group(1);
+                if (open.equalsIgnoreCase("connection")) { block = blockProto.size(); blockProto.add(null); }
+                continue;
+            }
+            Matcher rm = REMOTE_LINE.matcher(line);
+            if (rm.find()) { pending.add(new String[]{rm.group(1), rm.group(2), rm.group(3)}); blockOf.add(-1); }
+        }
+        for (int i = 0; i < pending.size(); i++) {
+            String[] r = pending.get(i);
+            int port = 1194;
+            if (r[1] != null) {
+                try { port = Integer.parseInt(r[1]); } catch (NumberFormatException ignored) { }
+            }
+            String proto = null;
+            if (r[2] != null && PROTO_WORD.matcher(r[2]).matches()) proto = r[2].toLowerCase(Locale.ROOT);
+            int bi = blockOf.get(i);
+            if (proto == null && bi >= 0 && blockProto.get(bi) != null) proto = blockProto.get(bi);
+            if (proto == null) proto = globalProto;
+            out.add(new Remote(r[0], port, proto.startsWith("tcp")));
+        }
+        return out;
+    }
+
+    /** The first remote of the profile, or null. */
+    public static Remote firstRemote(String cfg) {
+        List<Remote> all = allRemotes(cfg);
+        return all.isEmpty() ? null : all.get(0);
+    }
+
+    /** With preferTcp, the first TCP remote if the profile has one (used by the payload/WebSocket relay). */
+    public static Remote bestRemote(String cfg, boolean preferTcp) {
+        List<Remote> all = allRemotes(cfg);
+        if (all.isEmpty()) return null;
+        if (preferTcp) {
+            for (Remote r : all) if (r.tcp) return r;
+        }
+        return all.get(0);
     }
 
     /** True when the profile has an auth-user-pass directive. */

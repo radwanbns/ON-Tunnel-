@@ -104,69 +104,60 @@ public final class TransportProxy {
                 RNG.nextBytes(k);
                 wsKey = Base64.getEncoder().encodeToString(k);
             }
-            // Multi-request payloads (bug-style): send each request separately, drain
-            // intermediate HTTP replies, and only judge success on the *last* response.
-            // This prevents accepting "200 OK" from a decoy GET (e.g. /cdn-cgi/trace) and
-            // then stalling OpenVPN in CONNECTRETRY.
+            // ── payload handshake ────────────────────────────────────────
+            // Each *complete* HTTP request (ends with a blank line) gets its own reply read.
+            // Intermediate replies (decoy GETs such as /cdn-cgi/trace) are drained and ignored;
+            // only the LAST reply decides success. A 101 at any point ends the handshake.
+            // A part that does not end a request (an explicit [split] fragment) is simply written.
             List<PayloadTemplate.Part> parts = buildPayloadParts(wsKey);
+            final boolean wsMode = cfg.mode == TransportConfig.MODE_WEBSOCKET;
+            Reply last = null;
+            boolean noReply = false;
             for (int i = 0; i < parts.size(); i++) {
-                PayloadTemplate.Part p = parts.get(i);
-                if (p.delayBeforeMs > 0) {
-                    try { Thread.sleep(p.delayBeforeMs); } catch (InterruptedException e) {
+                PayloadTemplate.Part part = parts.get(i);
+                if (part.delayBeforeMs > 0) {
+                    try { Thread.sleep(part.delayBeforeMs); } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         throw new IOException("Interrupted");
                     }
                 }
-                upOut.write(p.data);
+                upOut.write(part.data);
                 upOut.flush();
-                if (i < parts.size() - 1) {
-                    try {
-                        // Intermediate replies (decoy GETs) – ignore failures
-                        up.setSoTimeout(8000);
-                        drainOneHttpExchange(upIn);
-                    } catch (Exception ignored) { }
+                boolean isLast = i == parts.size() - 1;
+                if (!isLast && !endsRequest(part.data)) continue; // mid-request fragment: no reply yet
+
+                int attempt = i + 1;
+                up.setSoTimeout(isLast ? (wsMode ? 20000 : 10000) : 10000);
+                Reply r;
+                try {
+                    r = readReply(upIn);
+                } catch (java.net.SocketTimeoutException ste) {
+                    if (isLast && !wsMode) { noReply = true; break; } // injector-style: no answer, go raw
+                    throw new IOException("No reply from the server to payload request #" + attempt);
+                } catch (EOFException eof) {
+                    throw new IOException("Server closed the connection after payload request #" + attempt);
+                }
+                last = r;
+                if (r.code == 101) break;                    // upgraded: raw (or framed) stream starts now
+                if (!isLast) drainBody(up, upIn, r);         // decoy reply: discard it
+            }
+
+            if (!noReply) {
+                boolean ok = last != null && (last.code == 101 || (!wsMode && last.code >= 200 && last.code < 300));
+                if (!ok) {
+                    throw new IOException("Server rejected the " + (wsMode ? "WebSocket upgrade" : "payload")
+                            + ": " + (last == null ? "no HTTP reply" : last.statusLine));
                 }
             }
 
-            // Final handshake response. Many free / bug hosts never send a clean HTTP
-            // status (or hang). HTTP Injector still pipes OpenVPN in that case.
-            // Strict WebSocket mode still requires 101.
-            String status = null;
-            int code = -1;
-            boolean gotResponse = false;
-            try {
-                up.setSoTimeout(cfg.mode == TransportConfig.MODE_WEBSOCKET ? 20000 : 10000);
-                status = readHeaders(upIn);
-                code = statusCode(status);
-                gotResponse = true;
-            } catch (java.net.SocketTimeoutException ste) {
-                if (cfg.mode == TransportConfig.MODE_WEBSOCKET) {
-                    throw new IOException("WebSocket handshake timed out (no 101 response)");
-                }
-                // PAYLOAD: no response – continue with raw tunnel (injector-style)
-            } catch (EOFException eof) {
-                if (cfg.mode == TransportConfig.MODE_WEBSOCKET) {
-                    throw new IOException("Server closed during WebSocket handshake");
-                }
-            }
-
-            boolean ok = isHandshakeOk(code, status);
-            if (cfg.mode == TransportConfig.MODE_WEBSOCKET) {
-                if (!ok) throw new IOException("Server rejected the WebSocket upgrade: " + status + " (code=" + code + ")");
-            } else if (gotResponse && !ok) {
-                // Got a clear HTTP error (4xx/5xx). Still try raw – some edges reply
-                // with an error page but keep the TCP session for the tunnel.
-                // Only abort on hard close (handled above).
-            }
-
-            // Clear read timeout for the long-lived tunnel
+            // Clear read timeouts for the long-lived tunnel
             try { up.setSoTimeout(0); } catch (Exception ignored) { }
             try { client.setSoTimeout(0); } catch (Exception ignored) { }
 
-            // Real RFC6455 WebSocket only when we actually received 101.
-            // Fake "Upgrade: websocket" injector payloads almost always need raw TCP.
-            boolean useWs = (cfg.mode == TransportConfig.MODE_WEBSOCKET && ok)
-                    || (code == 101);
+            // Framing is applied ONLY in WebSocket mode with "WebSocket framing" on, after a real 101.
+            // HTTP-payload mode is always raw: injector-style "Upgrade: websocket" payloads switch the
+            // connection to a plain TCP pipe, and framing it would corrupt the OpenVPN stream.
+            boolean useWs = wsMode && cfg.wsFraming && last != null && last.code == 101;
             if (useWs) {
                 relayWebSocket(client, upIn, upOut, up);
             } else {
@@ -283,39 +274,67 @@ public final class TransportProxy {
 
     private static boolean blank(String s) { return s == null || s.trim().isEmpty(); }
 
-    private static boolean isHandshakeOk(int code, String status) {
-        if (code == 101) return true;
-        if (code >= 200 && code < 300) return true;
-        if (status != null) {
-            String low = status.toLowerCase();
-            if (low.contains("connection established")) return true;
-            if (low.contains("101") && low.contains("switch")) return true;
-            // Some injectors / CDN edges return odd lines but leave the socket usable
-            if (low.contains("200") && (low.contains("ok") || low.contains("connection"))) return true;
-        }
-        return false;
+    /** One parsed HTTP reply header block. */
+    private static final class Reply {
+        final String statusLine;
+        final String headers;
+        final int code;
+        Reply(String s, String h, int c) { statusLine = s; headers = h; code = c; }
+    }
+
+    /** True when the bytes end with a blank line, i.e. they complete an HTTP request. */
+    private static boolean endsRequest(byte[] d) {
+        int n = d.length;
+        if (n >= 4 && d[n - 4] == '\r' && d[n - 3] == '\n' && d[n - 2] == '\r' && d[n - 1] == '\n') return true;
+        return n >= 2 && d[n - 2] == '\n' && d[n - 1] == '\n';
     }
 
     /**
-     * Drain one intermediate HTTP response (status + headers + small body) so the next
-     * request in a multi-request payload can proceed on the same socket.
+     * Reads the next HTTP reply. Leading junk (for example the tail of an earlier decoy body that had no
+     * length information) is skipped: the reply starts at the first "HTTP/" in the block.
      */
-    private static void drainOneHttpExchange(InputStream in) throws IOException {
-        HeaderBlock hb = readHeaderBlock(in);
-        int len = contentLength(hb.headers);
-        if (len > 0 && len < 256 * 1024) {
-            long left = len;
+    private static Reply readReply(InputStream in) throws IOException {
+        for (int guard = 0; guard < 16; guard++) {
+            HeaderBlock hb = readHeaderBlock(in);
+            int idx = hb.headers.indexOf("HTTP/");
+            if (idx < 0) continue;                         // pure junk block, keep reading
+            String text = idx == 0 ? hb.headers : hb.headers.substring(idx);
+            int eol = text.indexOf("\r\n");
+            String status = eol > 0 ? text.substring(0, eol) : text.trim();
+            return new Reply(status, text, statusCode(status));
+        }
+        throw new IOException("Server did not send a valid HTTP reply");
+    }
+
+    /** Discards the body of an intermediate reply so the next request starts on a clean stream. */
+    private static void drainBody(Socket up, InputStream in, Reply r) throws IOException {
+        if (r.code == 204 || r.code == 304 || (r.code >= 100 && r.code < 200)) return;
+        String low = r.headers.toLowerCase(java.util.Locale.ROOT);
+        int len = contentLength(r.headers);
+        if (low.contains("transfer-encoding: chunked")) {
+            skipChunked(in);
+        } else if (len > 0) {
+            long left = Math.min(len, 1024 * 1024);
             byte[] buf = new byte[4096];
             while (left > 0) {
                 int n = in.read(buf, 0, (int) Math.min(buf.length, left));
-                if (n < 0) break;
+                if (n < 0) throw new EOFException("Server closed while sending the decoy reply");
                 left -= n;
             }
-        } else if (len < 0 && hb.headers.toLowerCase().contains("transfer-encoding: chunked")) {
-            // Best-effort: skip one chunked body until 0\r\n\r\n
-            skipChunked(in);
+        } else if (len < 0) {
+            // No length information: whatever arrives shortly after the headers is body; swallow it.
+            int old = up.getSoTimeout();
+            try {
+                up.setSoTimeout(350);
+                byte[] buf = new byte[4096];
+                while (in.read(buf) >= 0) { /* discard */ }
+                throw new EOFException("Server closed while sending the decoy reply");
+            } catch (java.net.SocketTimeoutException quiet) {
+                // nothing more to read: body finished
+            } finally {
+                try { up.setSoTimeout(old); } catch (Exception ignored) { }
+            }
         }
-        // len == 0 or unknown: headers only (typical CONNECT / upgrade) – stop here
     }
 
     private static void skipChunked(InputStream in) throws IOException {
@@ -383,11 +402,6 @@ public final class TransportProxy {
             }
         }
         throw new IOException("Handshake response too large");
-    }
-
-    /** Reads up to and including the blank line that ends an HTTP header block; returns the status line. */
-    private static String readHeaders(InputStream in) throws IOException {
-        return readHeaderBlock(in).statusLine;
     }
 
     private static int contentLength(String headers) {
