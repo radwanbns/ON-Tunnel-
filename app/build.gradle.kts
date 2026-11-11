@@ -1,5 +1,5 @@
-
 import java.io.ByteArrayOutputStream
+import org.gradle.api.tasks.Exec
 
 plugins {
     id("com.android.application")
@@ -19,10 +19,6 @@ android {
         versionCode = 10
         versionName = "1.8"
 
-        ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
-        }
-
         externalNativeBuild {
             cmake {
                 cppFlags += "-std=c++17"
@@ -41,16 +37,18 @@ android {
         abi {
             isEnable = true
             reset()
-            include("arm64-v8a", "armeabi-v7a")
-            isUniversalApk = true
+            include(
+                *((project.findProperty("ABI_FILTERS") as? String)
+                    ?.split(";")?.toTypedArray()
+                    ?: arrayOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86"))
+            )
+            isUniversalApk = false
         }
     }
 
     signingConfigs {
         create("stableDebug") {
-            storeFile = file(
-                System.getProperty("user.home") + "/.android/debug.keystore"
-            )
+            storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
@@ -88,9 +86,9 @@ tasks.register("printDebugSha256") {
 
     doLast {
         val apk = fileTree("build/outputs/apk/debug") {
-            include("**/*universal*.apk")
+            include("**/*.apk")
         }.files.firstOrNull()
-            ?: error("Universal Debug APK not found")
+            ?: error("Debug APK not found")
 
         val output = ByteArrayOutputStream()
 
@@ -104,7 +102,7 @@ tasks.register("printDebugSha256") {
             standardOutput = output
         }
 
-        println("UNIVERSAL APK CERTIFICATE:")
+        println("DEBUG APK CERTIFICATE:")
         println(output.toString())
     }
 }
@@ -119,5 +117,6 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
