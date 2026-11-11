@@ -374,6 +374,12 @@ class MainActivity : ComponentActivity() {
                 status = VpnStatus.Connecting
                 statusDetail = "Waiting for network; OpenVPN will retry automatically"
             }
+            IcsOpenVpn.Status.NeedsUserAction -> {
+                ovpnSawProgress = true
+                mainHandler.removeCallbacks(ovpnTimeout)
+                status = VpnStatus.Connecting
+                statusDetail = "Tap the OpenVPN notification to authorize the VPN connection"
+            }
             is IcsOpenVpn.Status.Failed -> failOvpn(event.message)
             IcsOpenVpn.Status.Stopped -> {
                 if (status == VpnStatus.Connecting && !ovpnSawProgress) return
