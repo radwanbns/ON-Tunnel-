@@ -1214,19 +1214,6 @@ private fun LogsScreen(onBack: () -> Unit) {
                             Toast.makeText(context, "Logs copied", Toast.LENGTH_SHORT).show()
                         }
                     }) { Icon(Icons.Default.ContentCopy, contentDescription = "Copy logs") }
-                    IconButton(onClick = {
-                        val content = entries.joinToString("\n") { "${it.time}  ${it.message}" }
-                        if (content.isBlank()) {
-                            Toast.makeText(context, "No logs to share", Toast.LENGTH_SHORT).show()
-                        } else {
-                            val share = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_SUBJECT, "ON Tunnel Logs")
-                                putExtra(Intent.EXTRA_TEXT, content)
-                            }
-                            context.startActivity(Intent.createChooser(share, "Share logs"))
-                        }
-                    }) { Icon(Icons.Default.Share, contentDescription = "Share logs") }
                     IconButton(onClick = { AppLogs.clear(context); entries = emptyList() }) {
                         Icon(Icons.Default.DeleteSweep, contentDescription = "Clear logs", tint = RedErr)
                     }
