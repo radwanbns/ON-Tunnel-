@@ -1,10 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Needed on Android 11+ to see / bind the OpenVPN for Android app -->
-    <queries>
-        <package android:name="de.blinkt.openvpn" />
-    </queries>
-    <uses-permission android:name="de.blinkt.openvpn.api.ICSOPENVPN_API" />
-    <uses-permission android:name="de.blinkt.openvpn.REMOTE_API" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -12,7 +6,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <application android:name=".ONTunnelApp" android:allowBackup="false" android:icon="@drawable/ic_launcher"
+    <application tools:replace="android:name,android:allowBackup,android:icon,android:label,android:theme,android:supportsRtl,android:usesCleartextTraffic" android:name=".ONTunnelApp" android:allowBackup="false" android:icon="@drawable/ic_launcher"
         android:label="ON Tunnel" android:theme="@style/AppTheme" android:usesCleartextTraffic="true">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
