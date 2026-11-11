@@ -25,6 +25,14 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # Pure-Java core of the OpenVPN payload / WebSocket transport: compile + run its tests before building.
+      - name: Test OpenVPN transport core
+        run: |
+          mkdir -p /tmp/ovpn-core
+          javac -Xlint:all -d /tmp/ovpn-core app/src/main/java/com/ontunnel/app/ovpn/*.java tools/ovpn-core-test/*.java
+          java -cp /tmp/ovpn-core PayloadScenarios
+          java -cp /tmp/ovpn-core OvpnCoreTest
+
       - name: Restore fixed Debug keystore
         uses: actions/cache@v4
         with:
