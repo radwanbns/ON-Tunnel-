@@ -73,10 +73,6 @@ android {
         }
     }
 
-    buildFeatures {
-        aidl = true
-    }
-
     packaging {
         jniLibs {
             excludes += setOf(
