@@ -82,6 +82,21 @@ public class PayloadScenarios {
             p.stop();
         }
 
+        // 1b) preflight: payload handshake must finish before OpenVPN connects to the local relay
+        {
+            List<String> log = Collections.synchronizedList(new ArrayList<String>());
+            ServerSocket srv = server(0, log);
+            TransportProxy p = proxy(base(srv.getLocalPort(), TransportConfig.MODE_PAYLOAD, PAYLOAD), new ArrayList<String>());
+            int port = p.start();
+            p.prepare();
+            check("preflight completes both payload requests before local client starts", log.size() == 2
+                    && log.get(0).startsWith("GET /cdn-cgi/trace") && log.get(1).startsWith("ACL /"));
+            String got;
+            try { got = roundTrip(port, "first-attempt", 14); } catch (Exception e) { got = "<" + e.getClass().getSimpleName() + ">"; }
+            check("preflight session is reused for first OpenVPN connection", got.equals("FIRST-ATTEMPT"));
+            p.stop();
+        }
+
         // 2) WebSocket mode + custom request + framing OFF (injector-style server) -> raw
         {
             List<String> log = Collections.synchronizedList(new ArrayList<String>());
