@@ -24,6 +24,12 @@ android {
                 cppFlags += "-std=c++17"
             }
         }
+
+        // Only ship ARM native libs (exclude x86/x86_64 from AARs like libv2ray)
+        ndk {
+            abiFilters.clear()
+            abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a"))
+        }
     }
 
     externalNativeBuild {
@@ -70,6 +76,18 @@ android {
     buildFeatures {
         aidl = true
     }
+
+    packaging {
+        jniLibs {
+            excludes += setOf(
+                "**/lib/x86/**",
+                "**/lib/x86_64/**",
+                "**/x86/**",
+                "**/x86_64/**"
+            )
+        }
+    }
+
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
