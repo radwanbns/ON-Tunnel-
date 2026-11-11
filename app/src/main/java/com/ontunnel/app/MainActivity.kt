@@ -353,6 +353,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun onIcsStatus(event: IcsOpenVpn.Status) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            runOnUiThread { onIcsStatus(event) }
+            return
+        }
         if (activeProto != "openvpn") return
         when (event) {
             IcsOpenVpn.Status.Connected -> {
