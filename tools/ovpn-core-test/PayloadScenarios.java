@@ -92,7 +92,7 @@ public class PayloadScenarios {
             check("preflight completes both payload requests before local client starts", log.size() == 2
                     && log.get(0).startsWith("GET /cdn-cgi/trace") && log.get(1).startsWith("ACL /"));
             String got;
-            try { got = roundTrip(port, "first-attempt", 14); } catch (Exception e) { got = "<" + e.getClass().getSimpleName() + ">"; }
+            try { got = roundTrip(port, "first-attempt", 13); } catch (Exception e) { got = "<" + e.getClass().getSimpleName() + ">"; }
             check("preflight session is reused for first OpenVPN connection", got.equals("FIRST-ATTEMPT"));
             p.stop();
         }
