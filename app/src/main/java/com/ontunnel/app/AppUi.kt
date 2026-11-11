@@ -506,64 +506,6 @@ internal fun ONTunnelApp(
 
             } // end else (no editor)
 
-            // ── Auto-select sheet ──────────────────────────
-            if (showAutoSelectSheet) {
-                ModalBottomSheet(
-                    onDismissRequest = { showAutoSelectSheet = false },
-                    containerColor = SurfaceC,
-                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-                ) {
-                    Column(Modifier.fillMaxWidth().padding(bottom = 32.dp)) {
-                        Text(
-                            "Select a server",
-                            color = TextMain, fontSize = 20.sp, fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
-                        )
-                        if (servers.isEmpty()) {
-                            Text("No servers available. Update subscription or add one.", color = TextMuted, modifier = Modifier.padding(20.dp))
-                        } else {
-                            LazyColumn(
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.heightIn(max = 420.dp)
-                            ) {
-                                items(servers, key = { it.id }) { entry ->
-                                    ServerCard(
-                                        entry = entry,
-                                        badge = remember(entry.id, entry.config) { badgeFor(entry) },
-                                        selected = entry.id == selectedId,
-                                        onSelect = {
-                                            select(entry.id)
-                                            showAutoSelectSheet = false
-                                            message("Selected: ${entry.name}")
-                                        },
-                                        onEdit = { showAutoSelectSheet = false; openEditor(entry) },
-                                        onCopyUri = {},
-                                        onCopyJson = {},
-                                        onDuplicate = {},
-                                        onDelete = {}
-                                    )
-                                }
-                            }
-                        }
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = { selectAuto(); showAutoSelectSheet = false },
-                                modifier = Modifier.weight(1f)
-                            ) { Text("Auto pick") }
-                            Button(
-                                onClick = { selectRandom(); showAutoSelectSheet = false },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(containerColor = Accent)
-                            ) { Text("Random") }
-                        }
-                    }
-                }
-            }
-
             // ── Add-server sheet ───────────────────────────────────────
             if (showAddSheet) {
                 ModalBottomSheet(
@@ -1015,6 +957,7 @@ private fun v2rayBadge(config: String): String = try {
     "V2Ray"
 }
 
+@Composable
 private fun ServerCard(
     entry: ServerEntry,
     badge: String,
