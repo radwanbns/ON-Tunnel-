@@ -109,6 +109,9 @@ public final class OvpnConfigTools {
             sb.append("proto tcp-client\n");
             sb.append("remote 127.0.0.1 ").append(localPort).append('\n');
             sb.append("resolv-retry infinite\n");
+            sb.append("connect-retry 2\n");
+            sb.append("connect-retry-max 6\n");
+            sb.append("connect-timeout 30\n");
             sb.append("nobind\n");
             sb.append("persist-key\n");
             sb.append("persist-tun\n");

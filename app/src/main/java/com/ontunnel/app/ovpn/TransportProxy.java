@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.util.Base64;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -103,28 +104,70 @@ public final class TransportProxy {
                 RNG.nextBytes(k);
                 wsKey = Base64.getEncoder().encodeToString(k);
             }
-            sendPayload(upOut, wsKey);
-            String status = readHeaders(upIn);
-            int code = statusCode(status);
-            // WebSocket needs 101; HTTP payload / CONNECT accepts 2xx (incl. 200 Connection established) and 101
-            boolean ok = cfg.mode == TransportConfig.MODE_WEBSOCKET
-                    ? (code == 101)
-                    : (code == 101 || (code >= 200 && code < 300));
-            // Also accept non-standard "HTTP/1.x 200 Connection established" already covered by 2xx.
-            // Some broken proxies reply without a proper status line – accept empty-ish 200-like lines.
-            if (!ok && status != null) {
-                String low = status.toLowerCase();
-                if (low.contains("200") && (low.contains("connection established") || low.contains("ok"))) ok = true;
+            // Multi-request payloads (bug-style): send each request separately, drain
+            // intermediate HTTP replies, and only judge success on the *last* response.
+            // This prevents accepting "200 OK" from a decoy GET (e.g. /cdn-cgi/trace) and
+            // then stalling OpenVPN in CONNECTRETRY.
+            List<PayloadTemplate.Part> parts = buildPayloadParts(wsKey);
+            for (int i = 0; i < parts.size(); i++) {
+                PayloadTemplate.Part p = parts.get(i);
+                if (p.delayBeforeMs > 0) {
+                    try { Thread.sleep(p.delayBeforeMs); } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("Interrupted");
+                    }
+                }
+                upOut.write(p.data);
+                upOut.flush();
+                if (i < parts.size() - 1) {
+                    try {
+                        // Intermediate replies (decoy GETs) – ignore failures
+                        up.setSoTimeout(8000);
+                        drainOneHttpExchange(upIn);
+                    } catch (Exception ignored) { }
+                }
             }
-            if (!ok) throw new IOException("Server rejected the " +
-                    (cfg.mode == TransportConfig.MODE_WEBSOCKET ? "WebSocket upgrade" : "payload") +
-                    ": " + status + " (code=" + code + ")");
+
+            // Final handshake response. Many free / bug hosts never send a clean HTTP
+            // status (or hang). HTTP Injector still pipes OpenVPN in that case.
+            // Strict WebSocket mode still requires 101.
+            String status = null;
+            int code = -1;
+            boolean gotResponse = false;
+            try {
+                up.setSoTimeout(cfg.mode == TransportConfig.MODE_WEBSOCKET ? 20000 : 10000);
+                status = readHeaders(upIn);
+                code = statusCode(status);
+                gotResponse = true;
+            } catch (java.net.SocketTimeoutException ste) {
+                if (cfg.mode == TransportConfig.MODE_WEBSOCKET) {
+                    throw new IOException("WebSocket handshake timed out (no 101 response)");
+                }
+                // PAYLOAD: no response – continue with raw tunnel (injector-style)
+            } catch (EOFException eof) {
+                if (cfg.mode == TransportConfig.MODE_WEBSOCKET) {
+                    throw new IOException("Server closed during WebSocket handshake");
+                }
+            }
+
+            boolean ok = isHandshakeOk(code, status);
+            if (cfg.mode == TransportConfig.MODE_WEBSOCKET) {
+                if (!ok) throw new IOException("Server rejected the WebSocket upgrade: " + status + " (code=" + code + ")");
+            } else if (gotResponse && !ok) {
+                // Got a clear HTTP error (4xx/5xx). Still try raw – some edges reply
+                // with an error page but keep the TCP session for the tunnel.
+                // Only abort on hard close (handled above).
+            }
 
             // Clear read timeout for the long-lived tunnel
             try { up.setSoTimeout(0); } catch (Exception ignored) { }
             try { client.setSoTimeout(0); } catch (Exception ignored) { }
 
-            if (cfg.mode == TransportConfig.MODE_WEBSOCKET) {
+            // Real RFC6455 WebSocket only when we actually received 101.
+            // Fake "Upgrade: websocket" injector payloads almost always need raw TCP.
+            boolean useWs = (cfg.mode == TransportConfig.MODE_WEBSOCKET && ok)
+                    || (code == 101);
+            if (useWs) {
                 relayWebSocket(client, upIn, upOut, up);
             } else {
                 relayRaw(client, upIn, upOut, up);
@@ -185,7 +228,7 @@ public final class TransportProxy {
 
     // ── handshake ──────────────────────────────────────────────────────
 
-    private void sendPayload(OutputStream out, String wsKey) throws IOException {
+    private List<PayloadTemplate.Part> buildPayloadParts(String wsKey) {
         String tpl = cfg.payload == null ? "" : cfg.payload;
         if (tpl.trim().isEmpty()) {
             if (cfg.mode == TransportConfig.MODE_WEBSOCKET) {
@@ -195,27 +238,40 @@ public final class TransportProxy {
                         + "Upgrade: websocket[crlf]Connection: Upgrade[crlf]"
                         + "Sec-WebSocket-Key: [ws_key][crlf]Sec-WebSocket-Version: 13[crlf][crlf]";
             } else if (isHttpProxyDial()) {
-                // Dialing an HTTP proxy: classic CONNECT to the real OpenVPN host:port (any port works).
                 tpl = "CONNECT [host_port] HTTP/1.1[crlf]Host: [host_port][crlf]"
                         + "Proxy-Connection: Keep-Alive[crlf]Connection: Keep-Alive[crlf]"
                         + "User-Agent: [ua][crlf][crlf]";
             } else {
-                // Direct payload to edge/CDN – WebSocket-style upgrade is a common default.
                 tpl = "GET / HTTP/1.1[crlf]Host: [host][crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf][crlf]";
             }
         }
-        // Tags always expand with the *target* OpenVPN server (not the proxy dial address).
         List<PayloadTemplate.Part> parts = PayloadTemplate.expand(tpl, cfg.targetHost, cfg.targetPort, wsKey);
-        for (PayloadTemplate.Part p : parts) {
-            if (p.delayBeforeMs > 0) {
-                try { Thread.sleep(p.delayBeforeMs); } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new IOException("Interrupted");
-                }
-            }
-            out.write(p.data);
-            out.flush();
+        // If the user pasted a multi-request bug payload without [split], break it at
+        // intermediate CRLFCRLF so each HTTP request is its own write + response drain.
+        if (parts.size() == 1) {
+            parts = splitHttpRequests(parts.get(0));
         }
+        return parts;
+    }
+
+    /** Split one blob into HTTP requests at each intermediate \\r\\n\\r\\n (keep final empty line with last req). */
+    private static List<PayloadTemplate.Part> splitHttpRequests(PayloadTemplate.Part single) {
+        String s = new String(single.data, StandardCharsets.ISO_8859_1);
+        List<PayloadTemplate.Part> out = new ArrayList<PayloadTemplate.Part>();
+        int from = 0;
+        while (from < s.length()) {
+            int idx = s.indexOf("\r\n\r\n", from);
+            if (idx < 0) {
+                String tail = s.substring(from);
+                if (!tail.isEmpty()) out.add(new PayloadTemplate.Part(tail.getBytes(StandardCharsets.ISO_8859_1), out.isEmpty() ? single.delayBeforeMs : 80));
+                break;
+            }
+            String chunk = s.substring(from, idx + 4); // include the blank line
+            out.add(new PayloadTemplate.Part(chunk.getBytes(StandardCharsets.ISO_8859_1), out.isEmpty() ? single.delayBeforeMs : 80));
+            from = idx + 4;
+        }
+        if (out.isEmpty()) out.add(single);
+        return out;
     }
 
     /** True when we are dialing a different host/port than the real OpenVPN target (HTTP proxy path). */
@@ -227,10 +283,91 @@ public final class TransportProxy {
 
     private static boolean blank(String s) { return s == null || s.trim().isEmpty(); }
 
-    /** Reads up to and including the blank line that ends an HTTP header block; returns the status line. */
-    private static String readHeaders(InputStream in) throws IOException {
+    private static boolean isHandshakeOk(int code, String status) {
+        if (code == 101) return true;
+        if (code >= 200 && code < 300) return true;
+        if (status != null) {
+            String low = status.toLowerCase();
+            if (low.contains("connection established")) return true;
+            if (low.contains("101") && low.contains("switch")) return true;
+            // Some injectors / CDN edges return odd lines but leave the socket usable
+            if (low.contains("200") && (low.contains("ok") || low.contains("connection"))) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Drain one intermediate HTTP response (status + headers + small body) so the next
+     * request in a multi-request payload can proceed on the same socket.
+     */
+    private static void drainOneHttpExchange(InputStream in) throws IOException {
+        HeaderBlock hb = readHeaderBlock(in);
+        int len = contentLength(hb.headers);
+        if (len > 0 && len < 256 * 1024) {
+            long left = len;
+            byte[] buf = new byte[4096];
+            while (left > 0) {
+                int n = in.read(buf, 0, (int) Math.min(buf.length, left));
+                if (n < 0) break;
+                left -= n;
+            }
+        } else if (len < 0 && hb.headers.toLowerCase().contains("transfer-encoding: chunked")) {
+            // Best-effort: skip one chunked body until 0\r\n\r\n
+            skipChunked(in);
+        }
+        // len == 0 or unknown: headers only (typical CONNECT / upgrade) – stop here
+    }
+
+    private static void skipChunked(InputStream in) throws IOException {
+        while (true) {
+            String line = readLine(in);
+            if (line == null) return;
+            int sc = line.indexOf(';');
+            String hex = (sc >= 0 ? line.substring(0, sc) : line).trim();
+            int size;
+            try { size = Integer.parseInt(hex, 16); } catch (Exception e) { return; }
+            if (size == 0) {
+                // trailing headers
+                while (true) {
+                    String t = readLine(in);
+                    if (t == null || t.isEmpty()) return;
+                }
+            }
+            long left = size + 2; // data + CRLF
+            byte[] buf = new byte[4096];
+            while (left > 0) {
+                int n = in.read(buf, 0, (int) Math.min(buf.length, left));
+                if (n < 0) return;
+                left -= n;
+            }
+        }
+    }
+
+    private static String readLine(InputStream in) throws IOException {
+        ByteArrayOutputStream b = new ByteArrayOutputStream();
+        int prev = 0;
+        while (b.size() < MAX_HEADER) {
+            int c = in.read();
+            if (c < 0) return b.size() == 0 ? null : b.toString(StandardCharsets.ISO_8859_1.name());
+            if (prev == '\r' && c == '\n') {
+                byte[] arr = b.toByteArray();
+                return new String(arr, 0, Math.max(0, arr.length - 1), StandardCharsets.ISO_8859_1);
+            }
+            b.write(c);
+            prev = c;
+        }
+        return b.toString(StandardCharsets.ISO_8859_1.name());
+    }
+
+    private static final class HeaderBlock {
+        final String statusLine;
+        final String headers;
+        HeaderBlock(String s, String h) { statusLine = s; headers = h; }
+    }
+
+    private static HeaderBlock readHeaderBlock(InputStream in) throws IOException {
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        int m = 0; // progress through \r\n\r\n
+        int m = 0;
         while (buf.size() < MAX_HEADER) {
             int b = in.read();
             if (b < 0) throw new EOFException("Server closed the connection during handshake");
@@ -241,13 +378,30 @@ public final class TransportProxy {
             if (m == 4) {
                 String all = new String(buf.toByteArray(), StandardCharsets.ISO_8859_1);
                 int eol = all.indexOf("\r\n");
-                return eol > 0 ? all.substring(0, eol) : all.trim();
+                String status = eol > 0 ? all.substring(0, eol) : all.trim();
+                return new HeaderBlock(status, all);
             }
         }
         throw new IOException("Handshake response too large");
     }
 
+    /** Reads up to and including the blank line that ends an HTTP header block; returns the status line. */
+    private static String readHeaders(InputStream in) throws IOException {
+        return readHeaderBlock(in).statusLine;
+    }
+
+    private static int contentLength(String headers) {
+        for (String line : headers.split("\r\n")) {
+            int c = line.indexOf(':');
+            if (c > 0 && line.substring(0, c).trim().equalsIgnoreCase("Content-Length")) {
+                try { return Integer.parseInt(line.substring(c + 1).trim()); } catch (Exception ignored) { }
+            }
+        }
+        return -1;
+    }
+
     private static int statusCode(String statusLine) {
+        if (statusLine == null) return -1;
         String[] p = statusLine.split(" ", 3);
         if (p.length >= 2 && p[0].startsWith("HTTP/")) {
             try { return Integer.parseInt(p[1].trim()); } catch (NumberFormatException ignored) { }
