@@ -187,6 +187,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SubscriptionSync.schedule(this)
         // Close the app immediately if its signing certificate does not match.
         if (!AppIntegrity.isAppValid(this)) {
             finishAffinity()
