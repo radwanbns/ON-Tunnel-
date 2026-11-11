@@ -32,11 +32,6 @@ android {
             }
         }
 
-        // Ship ARM and Intel Android architectures.
-        ndk {
-            abiFilters.clear()
-            abiFilters.addAll(configuredAbis)
-        }
     }
 
     externalNativeBuild {
