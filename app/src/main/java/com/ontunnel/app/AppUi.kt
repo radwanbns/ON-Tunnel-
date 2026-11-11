@@ -110,6 +110,7 @@ internal fun ONTunnelApp(
     var selectedId by remember { mutableStateOf(store.selectedId) }
     var isUpdating by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
+    var showLogs by remember { mutableStateOf(false) }
     var showAddSheet by remember { mutableStateOf(false) }
     // Shown on EVERY app launch (rememberSaveable only survives rotation, not a new launch)
     var showTelegram by rememberSaveable { mutableStateOf(true) }
@@ -310,6 +311,9 @@ internal fun ONTunnelApp(
                         Toast.makeText(context, "Server saved", Toast.LENGTH_SHORT).show()
                     }
                 )
+            } else if (showLogs) {
+                BackHandler { showLogs = false }
+                LogsScreen(onBack = { showLogs = false })
             } else {
                 val selected = servers.firstOrNull { it.id == selectedId }
 
@@ -336,6 +340,11 @@ internal fun ONTunnelApp(
                                             Icon(Icons.Default.MoreVert, "Menu")
                                         }
                                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                            DropdownMenuItem(
+                                                text = { Text("Logs") },
+                                                leadingIcon = { Icon(Icons.Default.ReceiptLong, null) },
+                                                onClick = { menuOpen = false; showLogs = true }
+                                            )
                                             DropdownMenuItem(
                                                 text = { Text(if (isUpdating) "Checking..." else "Check update") },
                                                 leadingIcon = {
@@ -1144,4 +1153,43 @@ private fun tryDecodeSubscription(body: String): String {
         } catch (_: Exception) { }
     }
     return body
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LogsScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    var entries by remember { mutableStateOf(AppLogs.read(context)) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            entries = AppLogs.read(context)
+            delay(900)
+        }
+    }
+    Scaffold(containerColor = Bg, topBar = {
+        CenterAlignedTopAppBar(title = { Text("Logs", fontWeight = FontWeight.Bold) },
+            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") } },
+            actions = { IconButton(onClick = { AppLogs.clear(context); entries = emptyList() }) { Icon(Icons.Default.DeleteSweep, contentDescription = "Clear logs", tint = RedErr) } },
+            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent, titleContentColor = TextMain))
+    }) { padding ->
+        if (entries.isEmpty()) {
+            Column(Modifier.fillMaxSize().padding(padding).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Icon(Icons.Default.ReceiptLong, null, tint = Accent, modifier = Modifier.size(48.dp))
+                Spacer(Modifier.height(12.dp))
+                Text("No logs yet", color = TextMain, fontWeight = FontWeight.SemiBold)
+                Text("Connection events and errors will appear here.", color = TextMuted, textAlign = TextAlign.Center)
+            }
+        } else {
+            LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(entries.reversed(), key = { it.id }) { entry ->
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(SurfaceC).padding(horizontal = 12.dp, vertical = 9.dp)) {
+                        Text(entry.time, color = Accent, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        Spacer(Modifier.height(3.dp))
+                        Text(entry.message, color = TextMain, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+    }
 }
