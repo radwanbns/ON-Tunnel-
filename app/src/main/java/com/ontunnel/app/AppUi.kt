@@ -329,6 +329,13 @@ internal fun ONTunnelApp(
                     Scaffold(
                         containerColor = Color.Transparent,
                         snackbarHost = { SnackbarHost(snackbar) },
+                        bottomBar = {
+                            HomeLogsBottomBar(
+                                selectedLogs = false,
+                                onHome = { showLogs = false },
+                                onLogs = { showLogs = true }
+                            )
+                        },
                         topBar = {
                             CenterAlignedTopAppBar(
                                 title = {
@@ -340,11 +347,6 @@ internal fun ONTunnelApp(
                                             Icon(Icons.Default.MoreVert, "Menu")
                                         }
                                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                                            DropdownMenuItem(
-                                                text = { Text("Logs") },
-                                                leadingIcon = { Icon(Icons.Default.ReceiptLong, null) },
-                                                onClick = { menuOpen = false; showLogs = true }
-                                            )
                                             DropdownMenuItem(
                                                 text = { Text(if (isUpdating) "Checking..." else "Check update") },
                                                 leadingIcon = {
@@ -1156,6 +1158,28 @@ private fun tryDecodeSubscription(body: String): String {
 }
 
 
+@Composable
+private fun HomeLogsBottomBar(
+    selectedLogs: Boolean,
+    onHome: () -> Unit,
+    onLogs: () -> Unit
+) {
+    NavigationBar(containerColor = SurfaceC) {
+        NavigationBarItem(
+            selected = !selectedLogs,
+            onClick = onHome,
+            icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
+            label = { Text("HOME") }
+        )
+        NavigationBarItem(
+            selected = selectedLogs,
+            onClick = onLogs,
+            icon = { Icon(Icons.Default.ReceiptLong, contentDescription = "Logs") },
+            label = { Text("LOGS") }
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LogsScreen(onBack: () -> Unit) {
@@ -1167,12 +1191,44 @@ private fun LogsScreen(onBack: () -> Unit) {
             delay(900)
         }
     }
-    Scaffold(containerColor = Bg, topBar = {
-        CenterAlignedTopAppBar(title = { Text("Logs", fontWeight = FontWeight.Bold) },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") } },
-            actions = { IconButton(onClick = { AppLogs.clear(context); entries = emptyList() }) { Icon(Icons.Default.DeleteSweep, contentDescription = "Clear logs", tint = RedErr) } },
-            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent, titleContentColor = TextMain))
-    }) { padding ->
+    Scaffold(
+        containerColor = Bg,
+        bottomBar = {
+            HomeLogsBottomBar(
+                selectedLogs = true,
+                onHome = onBack,
+                onLogs = {}
+            )
+        },
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text("Logs", fontWeight = FontWeight.Bold) },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Home") } },
+                actions = {
+                    IconButton(onClick = {
+                        val content = entries.joinToString("\\n") { "${it.time}  ${it.message}" }
+                        if (content.isBlank()) {
+                            Toast.makeText(context, "No logs to share", Toast.LENGTH_SHORT).show()
+                        } else {
+                            val share = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_SUBJECT, "ON Tunnel Logs")
+                                putExtra(Intent.EXTRA_TEXT, content)
+                            }
+                            context.startActivity(Intent.createChooser(share, "Share logs"))
+                        }
+                    }) { Icon(Icons.Default.Share, contentDescription = "Share logs") }
+                    IconButton(onClick = { AppLogs.clear(context); entries = emptyList() }) {
+                        Icon(Icons.Default.DeleteSweep, contentDescription = "Clear logs", tint = RedErr)
+                    }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = Color.Transparent,
+                    titleContentColor = TextMain
+                )
+            )
+        }
+    ) { padding ->
         if (entries.isEmpty()) {
             Column(Modifier.fillMaxSize().padding(padding).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Icon(Icons.Default.ReceiptLong, null, tint = Accent, modifier = Modifier.size(48.dp))
