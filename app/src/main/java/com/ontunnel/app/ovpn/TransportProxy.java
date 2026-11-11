@@ -39,15 +39,20 @@ public final class TransportProxy {
     private static final int MAX_FRAME = 4 * 1024 * 1024;
 
     private final TransportConfig cfg;
-    private final InetAddress dialAddr;
+    private final InetAddress[] dialAddrs;
     private final Listener listener;
     private ServerSocket server;
     private volatile boolean running;
     private final Set<Socket> open = Collections.synchronizedSet(new HashSet<Socket>());
 
     public TransportProxy(TransportConfig cfg, InetAddress dialAddr, Listener listener) {
+        this(cfg, new InetAddress[]{dialAddr}, listener);
+    }
+
+    /** All candidate addresses of the dial host are tried in order for every upstream connection. */
+    public TransportProxy(TransportConfig cfg, InetAddress[] dialAddrs, Listener listener) {
         this.cfg = cfg;
-        this.dialAddr = dialAddr;
+        this.dialAddrs = dialAddrs;
         this.listener = listener;
     }
 
@@ -89,17 +94,82 @@ public final class TransportProxy {
         }
     }
 
+    /** Handshake failure. {@code permanent} = retrying cannot help (the server answered 3xx/4xx). */
+    private static final class Rejected extends IOException {
+        private static final long serialVersionUID = 1L;
+        final boolean permanent;
+        Rejected(String message, boolean permanent) { super(message); this.permanent = permanent; }
+    }
+
+    /** An upstream connection whose payload / WebSocket handshake succeeded. */
+    private static final class Session {
+        final Socket up;
+        final BufferedInputStream upIn;
+        final OutputStream upOut;
+        final boolean framed;
+        Session(Socket up, BufferedInputStream in, OutputStream out, boolean framed) {
+            this.up = up; this.upIn = in; this.upOut = out; this.framed = framed;
+        }
+    }
+
     private void handle(Socket client) {
-        Socket up = null;
+        Session s = null;
         try {
             client.setTcpNoDelay(true);
-            up = openUpstream();
-            open.add(up);
+            // The upstream handshake is retried here, BEFORE anything is read from OpenVPN. OpenVPN's own
+            // bytes simply wait in the socket buffer, so a dropped dial / reset / 5xx during the handshake
+            // never shows up as "Retrying connection" in OpenVPN.
+            IOException lastErr = null;
+            int attempts = Math.max(1, cfg.attempts);
+            for (int i = 0; i < attempts && running; i++) {
+                try {
+                    s = connectAndHandshake();
+                    lastErr = null;
+                    break;
+                } catch (IOException e) {
+                    lastErr = e;
+                    if (e instanceof Rejected && ((Rejected) e).permanent) break;
+                    if (i + 1 < attempts && !pause(500L * (i + 1))) break;
+                }
+            }
+            if (s == null) throw lastErr != null ? lastErr : new IOException("Relay stopped");
+
+            // Clear read timeouts for the long-lived tunnel
+            try { s.up.setSoTimeout(0); } catch (Exception ignored) { }
+            try { client.setSoTimeout(0); } catch (Exception ignored) { }
+
+            if (s.framed) {
+                relayWebSocket(client, s.upIn, s.upOut, s.up);
+            } else {
+                relayRaw(client, s.upIn, s.upOut, s.up);
+            }
+        } catch (IOException e) {
+            if (running && listener != null) listener.onError(e.getMessage() == null ? e.toString() : e.getMessage());
+        } finally {
+            closeQuietly(client);
+            if (s != null) { closeQuietly(s.up); open.remove(s.up); }
+            open.remove(client);
+        }
+    }
+
+    private static boolean pause(long ms) {
+        try { Thread.sleep(ms); return true; } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
+    }
+
+    /** Dials the server and runs the payload / WebSocket handshake. Closes the socket itself on failure. */
+    private Session connectAndHandshake() throws IOException {
+        Socket up = openUpstream();
+        open.add(up);
+        boolean done = false;
+        try {
             BufferedInputStream upIn = new BufferedInputStream(up.getInputStream(), 16 * 1024);
             OutputStream upOut = up.getOutputStream();
 
+            final boolean wsMode = cfg.mode == TransportConfig.MODE_WEBSOCKET;
+            // MODE_PAYLOAD and MODE_LEGACY are lenient: any 2xx is a valid "go raw" signal.
+            final boolean lenient = !wsMode;
             String wsKey = null;
-            if (cfg.mode == TransportConfig.MODE_WEBSOCKET) {
+            if (wsMode) {
                 byte[] k = new byte[16];
                 RNG.nextBytes(k);
                 wsKey = Base64.getEncoder().encodeToString(k);
@@ -110,29 +180,27 @@ public final class TransportProxy {
             // only the LAST reply decides success. A 101 at any point ends the handshake.
             // A part that does not end a request (an explicit [split] fragment) is simply written.
             List<PayloadTemplate.Part> parts = buildPayloadParts(wsKey);
-            final boolean wsMode = cfg.mode == TransportConfig.MODE_WEBSOCKET;
+            StringBuilder sentText = new StringBuilder();
+            for (PayloadTemplate.Part part : parts) sentText.append(new String(part.data, StandardCharsets.ISO_8859_1));
+
             Reply last = null;
             boolean noReply = false;
             for (int i = 0; i < parts.size(); i++) {
                 PayloadTemplate.Part part = parts.get(i);
-                if (part.delayBeforeMs > 0) {
-                    try { Thread.sleep(part.delayBeforeMs); } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        throw new IOException("Interrupted");
-                    }
-                }
+                if (part.delayBeforeMs > 0 && !pause(part.delayBeforeMs)) throw new IOException("Interrupted");
                 upOut.write(part.data);
                 upOut.flush();
                 boolean isLast = i == parts.size() - 1;
                 if (!isLast && !endsRequest(part.data)) continue; // mid-request fragment: no reply yet
 
                 int attempt = i + 1;
-                up.setSoTimeout(isLast ? (wsMode ? 20000 : 10000) : 10000);
+                // legacy (HTTP Custom style) does not wait long for a reply that is never coming
+                up.setSoTimeout(isLast ? (wsMode ? 15000 : cfg.mode == TransportConfig.MODE_LEGACY ? 6000 : 10000) : 10000);
                 Reply r;
                 try {
                     r = readReply(upIn);
                 } catch (java.net.SocketTimeoutException ste) {
-                    if (isLast && !wsMode) { noReply = true; break; } // injector-style: no answer, go raw
+                    if (isLast && lenient) { noReply = true; break; } // injector-style: no answer, go raw
                     throw new IOException("No reply from the server to payload request #" + attempt);
                 } catch (EOFException eof) {
                     throw new IOException("Server closed the connection after payload request #" + attempt);
@@ -143,49 +211,71 @@ public final class TransportProxy {
             }
 
             if (!noReply) {
-                boolean ok = last != null && (last.code == 101 || (!wsMode && last.code >= 200 && last.code < 300));
+                boolean ok = last != null && (last.code == 101 || (lenient && last.code >= 200 && last.code < 300));
                 if (!ok) {
-                    throw new IOException("Server rejected the " + (wsMode ? "WebSocket upgrade" : "payload")
-                            + ": " + (last == null ? "no HTTP reply" : last.statusLine));
+                    boolean permanent = last != null && last.code >= 300 && last.code < 500;
+                    throw new Rejected("Server rejected the " + (wsMode ? "WebSocket upgrade" : "payload")
+                            + ": " + (last == null ? "no HTTP reply" : last.statusLine), permanent);
                 }
             }
 
-            // Clear read timeouts for the long-lived tunnel
-            try { up.setSoTimeout(0); } catch (Exception ignored) { }
-            try { client.setSoTimeout(0); } catch (Exception ignored) { }
-
-            // Framing is applied ONLY in WebSocket mode with "WebSocket framing" on, after a real 101.
-            // HTTP-payload mode is always raw: injector-style "Upgrade: websocket" payloads switch the
-            // connection to a plain TCP pipe, and framing it would corrupt the OpenVPN stream.
-            boolean useWs = wsMode && cfg.wsFraming && last != null && last.code == 101;
-            if (useWs) {
-                relayWebSocket(client, upIn, upOut, up);
-            } else {
-                relayRaw(client, upIn, upOut, up);
+            // Framing is applied ONLY in WebSocket mode after a real 101 reply:
+            //  AUTO   - framed only when the server proves it speaks RFC 6455 (sends Sec-WebSocket-Accept);
+            //           injector-style servers that turn into a plain TCP pipe after the 101 stay raw.
+            //  ALWAYS - framed after every 101.   NEVER (or wsFraming=false) - always raw.
+            // HTTP-payload and legacy modes are always raw: framing a plain pipe would corrupt OpenVPN's stream.
+            boolean framed = false;
+            if (wsMode && cfg.wsFraming && cfg.framingMode != TransportConfig.FRAMING_NEVER
+                    && last != null && last.code == 101) {
+                framed = cfg.framingMode == TransportConfig.FRAMING_ALWAYS
+                        || headerValue(last.headers, "Sec-WebSocket-Accept") != null;
             }
-        } catch (IOException e) {
-            if (running && listener != null) listener.onError(e.getMessage() == null ? e.toString() : e.getMessage());
+            done = true;
+            return new Session(up, upIn, upOut, framed);
         } finally {
-            closeQuietly(client);
-            closeQuietly(up);
-            open.remove(client);
-            if (up != null) open.remove(up);
+            if (!done) { closeQuietly(up); open.remove(up); }
         }
+    }
+
+    /** Value of an HTTP header (first match, case-insensitive) in a header block, or null. */
+    static String headerValue(String block, String name) {
+        if (block == null) return null;
+        for (String line : block.split("\r?\n")) {
+            int c = line.indexOf(':');
+            if (c > 0 && line.substring(0, c).trim().equalsIgnoreCase(name)) return line.substring(c + 1).trim();
+        }
+        return null;
     }
 
     // ── upstream connection ────────────────────────────────────────────
 
+    /** Tries every candidate address of the dial host in order; the first that connects (and passes TLS) wins. */
     private Socket openUpstream() throws IOException {
+        IOException last = null;
+        for (InetAddress addr : dialAddrs) {
+            if (!running) break;
+            try {
+                return openUpstream(addr);
+            } catch (IOException e) {
+                last = e;
+            }
+        }
+        throw last != null ? last : new IOException("No server address to connect to");
+    }
+
+    private Socket openUpstream(InetAddress addr) throws IOException {
         Socket raw = new Socket();
         raw.setTcpNoDelay(true);
         try { raw.setKeepAlive(true); } catch (Exception ignored) { }
-        raw.connect(new InetSocketAddress(dialAddr, cfg.dialPort), 20000);
+        raw.connect(new InetSocketAddress(addr, cfg.dialPort), 12000);
         // Handshake read timeout (cleared after successful payload response)
-        try { raw.setSoTimeout(25000); } catch (Exception ignored) { }
+        try { raw.setSoTimeout(15000); } catch (Exception ignored) { }
         if (!cfg.tls) return raw;
         try {
+            // Legacy (HTTP Custom style) never validates the certificate: SNI may be a front domain.
+            boolean trustAll = cfg.allowInsecure || cfg.mode == TransportConfig.MODE_LEGACY;
             SSLContext ctx = SSLContext.getInstance("TLS");
-            TrustManager[] tm = cfg.allowInsecure ? new TrustManager[]{new TrustAll()} : null;
+            TrustManager[] tm = trustAll ? new TrustManager[]{new TrustAll()} : null;
             ctx.init(null, tm, RNG);
             String peer = cfg.sni != null && !cfg.sni.trim().isEmpty() ? cfg.sni.trim() : cfg.dialHost;
             SSLSocket s = (SSLSocket) ctx.getSocketFactory().createSocket(raw, peer, cfg.dialPort, true);
@@ -194,7 +284,7 @@ public final class TransportProxy {
                 try { p.setServerNames(Collections.singletonList(new SNIHostName(peer))); }
                 catch (IllegalArgumentException ignored) { }
             }
-            if (!cfg.allowInsecure) p.setEndpointIdentificationAlgorithm("HTTPS");
+            if (!trustAll) p.setEndpointIdentificationAlgorithm("HTTPS");
             s.setSSLParameters(p);
             s.startHandshake();
             return s;

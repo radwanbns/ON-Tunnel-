@@ -184,8 +184,10 @@ public final class OvpnConfigTools {
             sb.append("remote 127.0.0.1 ").append(localPort).append('\n');
             sb.append("resolv-retry infinite\n");
             sb.append("connect-retry 2\n");
-            sb.append("connect-retry-max 6\n");
+            // No connect-retry-max: OpenVPN keeps retrying the local relay instead of giving up
+            // after N failures (the relay itself re-dials the server transparently).
             sb.append("connect-timeout 30\n");
+            sb.append("hand-window 120\n");
             sb.append("nobind\n");
             sb.append("persist-key\n");
             sb.append("persist-tun\n");
