@@ -105,7 +105,9 @@ public class PayloadScenarios {
                     && log.get(0).startsWith("GET /cdn-cgi/trace") && log.get(1).startsWith("ACL /"));
             String got;
             try { got = roundTrip(port, "first-attempt", 14); } catch (Exception e) { got = "<" + e.getClass().getSimpleName() + ">"; }
-            check("preflight session is reused for first OpenVPN connection", rawEquals(got, "FIRST-ATTEMPT"));
+            check("first OpenVPN connection gets a fresh payload session after preflight",
+                    rawEquals(got, "FIRST-ATTEMPT") && log.size() == 4
+                    && log.get(2).startsWith("GET /cdn-cgi/trace") && log.get(3).startsWith("ACL /"));
             p.stop();
         }
 
