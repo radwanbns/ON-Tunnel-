@@ -125,6 +125,7 @@ tasks.register("printDebugSha256") {
 
 dependencies {
     implementation(files("libs/libv2ray.aar"))
+    implementation(files("libs/ics-openvpn.aar"))
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.annotation:annotation:1.8.2")
     implementation("androidx.appcompat:appcompat:1.7.0")
