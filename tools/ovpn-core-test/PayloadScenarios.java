@@ -21,12 +21,13 @@ public class PayloadScenarios {
             try {
                 InputStream in = new BufferedInputStream(s.getInputStream()); OutputStream out = s.getOutputStream();
                 String r1 = hdr(in); log.add(r1.split("\r\n")[0]);
+                // Read request #2 before replying to #1: validates send-all-first injector behavior.
+                String r2 = hdr(in); log.add(r2.split("\r\n")[0]);
                 String body = "fl=1f1\nh=example.com\nip=1.2.3.4\nts=1.0\nvisit_scheme=https\nuag=x\ncolo=CDG\nhttp=http/1.1\nloc=MA\ntls=TLSv1.3\nsni=plaintext\nwarp=off\ngateway=off\nrbi=off\nkex=X25519\n";
                 if (bodyStyle == 0) out.write(("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + body.length() + "\r\n\r\n" + body).getBytes());
                 else if (bodyStyle == 1) out.write(("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" + Integer.toHexString(body.length()) + "\r\n" + body + "\r\n0\r\n\r\n").getBytes());
                 else out.write(("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n" + body).getBytes());
                 out.flush();
-                String r2 = hdr(in); log.add(r2.split("\r\n")[0]);
                 out.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n".getBytes()); out.flush();
                 byte[] b = new byte[4096]; int n;   // raw backend: echo upper-case
                 while ((n = in.read(b)) >= 0) { out.write(new String(b, 0, n).toUpperCase().getBytes()); out.flush(); }
