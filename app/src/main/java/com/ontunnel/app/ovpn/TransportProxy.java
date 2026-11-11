@@ -547,7 +547,36 @@ public final class TransportProxy {
         }, "ovpn-relay-c2u");
         c2u.setDaemon(true);
         c2u.start();
-        try { pump(upIn, client.getOutputStream()); } catch (IOException ignored) { }
+        try { pumpOpenVpnDown(upIn, client.getOutputStream()); } catch (IOException ignored) { }
+    }
+
+    /**
+     * Injector-style gateways may prepend printable text after HTTP 101 (for example
+     * "Content-Length: 104857600000\\r\\n\\r\\n") before the first OpenVPN TCP packet.
+     * OpenVPN TCP packets start with a small binary length prefix, so discard only the
+     * leading printable ASCII/CRLF bytes and then relay the stream byte-for-byte.
+     */
+    private static void pumpOpenVpnDown(InputStream in, OutputStream out) throws IOException {
+        byte[] buf = new byte[16 * 1024];
+        boolean leading = true;
+        int n;
+        while ((n = in.read(buf)) >= 0) {
+            if (n == 0) continue;
+            int off = 0;
+            if (leading) {
+                while (off < n && isLeadingTextByte(buf[off])) off++;
+                if (off < n) leading = false;
+            }
+            if (off < n) {
+                out.write(buf, off, n - off);
+                out.flush();
+            }
+        }
+    }
+
+    private static boolean isLeadingTextByte(byte value) {
+        int b = value & 0xff;
+        return (b >= 0x20 && b <= 0x7e) || b == 0x0d || b == 0x0a;
     }
 
     private static void pump(InputStream in, OutputStream out) throws IOException {
