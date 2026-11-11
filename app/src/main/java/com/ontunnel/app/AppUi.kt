@@ -1207,6 +1207,16 @@ private fun LogsScreen(onBack: () -> Unit) {
                     IconButton(onClick = {
                         val content = entries.joinToString("\n") { "${it.time}  ${it.message}" }
                         if (content.isBlank()) {
+                            Toast.makeText(context, "No logs to copy", Toast.LENGTH_SHORT).show()
+                        } else {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("ON Tunnel Logs", content))
+                            Toast.makeText(context, "Logs copied", Toast.LENGTH_SHORT).show()
+                        }
+                    }) { Icon(Icons.Default.ContentCopy, contentDescription = "Copy logs") }
+                    IconButton(onClick = {
+                        val content = entries.joinToString("\n") { "${it.time}  ${it.message}" }
+                        if (content.isBlank()) {
                             Toast.makeText(context, "No logs to share", Toast.LENGTH_SHORT).show()
                         } else {
                             val share = Intent(Intent.ACTION_SEND).apply {
