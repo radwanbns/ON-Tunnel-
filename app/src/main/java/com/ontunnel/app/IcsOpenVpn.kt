@@ -23,6 +23,7 @@ object IcsOpenVpn {
         object Connecting : Status()
         object Connected : Status()
         object Waiting : Status()
+        object NeedsUserAction : Status()
         data class Failed(val message: String) : Status()
         object Stopped : Status()
     }
@@ -104,8 +105,7 @@ object IcsOpenVpn {
                     ConnectionStatus.LEVEL_VPNPAUSED -> if (sawActive) Status.Waiting else null
                     ConnectionStatus.LEVEL_AUTH_FAILED ->
                         Status.Failed("Authentication failed: check your username and password.")
-                    ConnectionStatus.LEVEL_WAITING_FOR_USER_INPUT ->
-                        Status.Failed("This profile requires credentials or a key passphrase.")
+                    ConnectionStatus.LEVEL_WAITING_FOR_USER_INPUT -> Status.NeedsUserAction
                     ConnectionStatus.LEVEL_NOTCONNECTED -> if (sawActive) Status.Stopped else null
                     else -> null
                 }
