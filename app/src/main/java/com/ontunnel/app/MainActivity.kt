@@ -415,6 +415,8 @@ class MainActivity : ComponentActivity() {
                 statusDetail = when (state) {
                     "CONNECTING", "TCP_CONNECT" -> "Connecting to server"
                     "WAIT" -> "Waiting for server"
+                    "RESOLVE" -> "Resolving server address"
+                    "CONNECTRETRY" -> "Retrying connection" + if (message.isNotBlank()) " – ${message.take(60)}" else ""
                     "AUTH" -> "Authenticating"
                     "GET_CONFIG" -> "Getting configuration"
                     "ASSIGN_IP" -> "Assigning IP address"

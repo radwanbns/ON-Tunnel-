@@ -132,7 +132,7 @@ internal fun OvpnEditorScreen(
                         ", then carries OpenVPN through it. The server must expose OpenVPN over TCP behind this endpoint."
                 )
                 if (remote != null && !remote.tcp) {
-                    Hint("Your profile says UDP – it will be forced to TCP in this mode.", Amber)
+                    Hint("This profile lists only UDP remotes. In this mode ON Tunnel forces TCP, so the server must also accept OpenVPN over TCP (UDP-only servers cannot be tunnelled this way).", Amber)
                 }
                 Field("Connect to (optional)  host[:port]", p.serverOverride, { p = p.copy(serverOverride = it) })
 
@@ -151,12 +151,16 @@ internal fun OvpnEditorScreen(
                     )
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = { p = p.copy(payload = OvpnMode.CONNECT_TEMPLATE) }) {
-                            Text("CONNECT (proxy)")
+                            Text("CONNECT")
                         }
                         TextButton(onClick = { p = p.copy(payload = OvpnMode.PAYLOAD_TEMPLATE) }) {
-                            Text("WebSocket-style")
+                            Text("WS-style")
+                        }
+                        TextButton(onClick = { p = p.copy(payload = OvpnMode.DECOY_TEMPLATE) }) {
+                            Text("Decoy + ACL")
                         }
                     }
+                    Hint("HTTP payload mode always carries OpenVPN as a raw stream after the server's reply (also after “101 Switching Protocols”). With several requests in one payload, every reply except the last is read and ignored; the last one must be 101 or 2xx.")
                     Hint("For HTTP proxy on any port: set Proxy host/port and use CONNECT template (or leave payload empty – auto CONNECT).")
                     Hint("Tags: [crlf] [cr] [lf] [host] [port] [host_port] [ua] [split] [delay_split]")
                 } else {
@@ -169,6 +173,8 @@ internal fun OvpnEditorScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Hint("Leave the custom request empty to use a standard RFC 6455 upgrade. If you write one, include [ws_key] in the Sec-WebSocket-Key header.")
+                    SwitchRow("WebSocket framing (RFC 6455)", p.wsFraming) { p = p.copy(wsFraming = it) }
+                    Hint("Turn this OFF when the server switches to a plain TCP pipe after “101 Switching Protocols” (typical for injector payloads such as decoy GET + ACL). OFF behaves like HTTP payload mode.")
                 }
 
                 SwitchRow("TLS (HTTPS)", p.tls) { p = p.copy(tls = it) }

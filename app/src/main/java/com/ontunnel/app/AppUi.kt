@@ -165,7 +165,7 @@ internal fun ONTunnelApp(
     fun copyText(label: String, text: String) {
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(ClipData.newPlainText(label, text))
-        Toast.makeText(context, "$label – copied (Unlocked)", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "$label – copied", Toast.LENGTH_SHORT).show()
     }
 
     fun runUpdate(auto: Boolean) {
@@ -1026,13 +1026,13 @@ private fun ServerCard(
                             onClick = { menu = false; onEdit() }
                         )
                         DropdownMenuItem(
-                            text = { Text(if (entry.isOpenVpn) "Copy .ovpn (Unlocked)" else "Copy link (Unlocked)") },
+                            text = { Text(if (entry.isOpenVpn) "Copy .ovpn" else "Copy link") },
                             leadingIcon = { Icon(Icons.Default.ContentCopy, null) },
                             onClick = { menu = false; onCopyUri() }
                         )
                         if (!entry.isOpenVpn) {
                             DropdownMenuItem(
-                                text = { Text("Copy JSON (Unlocked)") },
+                                text = { Text("Copy JSON") },
                                 leadingIcon = { Icon(Icons.Default.ContentCopy, null) },
                                 onClick = { menu = false; onCopyJson() }
                             )
