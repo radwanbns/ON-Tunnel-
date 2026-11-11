@@ -18,7 +18,7 @@ internal object AppLogs {
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val old = try { JSONArray(prefs.getString(KEY, "[]")) } catch (_: Exception) { JSONArray() }
         val now = System.currentTimeMillis()
-        val item = JSONObject().put("id", now).put("time", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(now))).put("message", message.replace(Regex("[\\r\\n]+"), " ").take(500))
+        val item = JSONObject().put("id", now * 1000L + old.length()).put("time", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(now))).put("message", message.replace(Regex("[\\r\\n]+"), " ").take(500))
         val next = JSONArray()
         val start = (old.length() - LIMIT + 1).coerceAtLeast(0)
         for (i in start until old.length()) next.put(old.optJSONObject(i))
