@@ -40,9 +40,9 @@ android {
             include(
                 *((project.findProperty("ABI_FILTERS") as? String)
                     ?.split(";")?.toTypedArray()
-                    ?: arrayOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86"))
+                    ?: arrayOf("arm64-v8a", "armeabi-v7a"))
             )
-            isUniversalApk = false
+            isUniversalApk = true
         }
     }
 
