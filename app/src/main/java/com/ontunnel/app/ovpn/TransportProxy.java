@@ -105,16 +105,15 @@ public final class TransportProxy {
                 wsKey = Base64.getEncoder().encodeToString(k);
             }
             // ── payload handshake ────────────────────────────────────────
-            // Each *complete* HTTP request (ends with a blank line) gets its own reply read.
-            // Intermediate replies (decoy GETs such as /cdn-cgi/trace) are drained and ignored;
-            // only the LAST reply decides success. A 101 at any point ends the handshake.
-            // A part that does not end a request (an explicit [split] fragment) is simply written.
+            // Send the complete payload sequence before waiting for HTTP replies. Many injector
+            // backends expect a decoy request (GET /cdn-cgi/trace) and the following ACL/Upgrade
+            // request to arrive in one flight; waiting for the decoy response first can deadlock
+            // or time out on those servers. Explicit [split]/[delay_split] markers are still
+            // honoured, but they split writes only, not the request/response exchange.
             List<PayloadTemplate.Part> parts = buildPayloadParts(wsKey);
             final boolean wsMode = cfg.mode == TransportConfig.MODE_WEBSOCKET;
-            Reply last = null;
-            boolean noReply = false;
-            for (int i = 0; i < parts.size(); i++) {
-                PayloadTemplate.Part part = parts.get(i);
+            ByteArrayOutputStream sentPayload = new ByteArrayOutputStream();
+            for (PayloadTemplate.Part part : parts) {
                 if (part.delayBeforeMs > 0) {
                     try { Thread.sleep(part.delayBeforeMs); } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
@@ -123,23 +122,31 @@ public final class TransportProxy {
                 }
                 upOut.write(part.data);
                 upOut.flush();
-                boolean isLast = i == parts.size() - 1;
-                if (!isLast && !endsRequest(part.data)) continue; // mid-request fragment: no reply yet
+                sentPayload.write(part.data);
+            }
 
-                int attempt = i + 1;
+            // Count completed HTTP requests in the fully expanded payload. A payload without a
+            // conventional blank-line terminator is still allowed as a single custom request.
+            String sentText = new String(sentPayload.toByteArray(), StandardCharsets.ISO_8859_1);
+            int repliesExpected = countHttpRequests(sentText);
+            if (repliesExpected == 0) repliesExpected = 1;
+            Reply last = null;
+            boolean noReply = false;
+            for (int request = 1; request <= repliesExpected; request++) {
+                boolean isLast = request == repliesExpected;
                 up.setSoTimeout(isLast ? (wsMode ? 20000 : 10000) : 10000);
                 Reply r;
                 try {
                     r = readReply(upIn);
                 } catch (java.net.SocketTimeoutException ste) {
-                    if (isLast && !wsMode) { noReply = true; break; } // injector-style: no answer, go raw
-                    throw new IOException("No reply from the server to payload request #" + attempt);
+                    if (isLast && !wsMode) { noReply = true; break; } // injector-style: no final HTTP answer; continue raw
+                    throw new IOException("No reply from the server to payload request #" + request);
                 } catch (EOFException eof) {
-                    throw new IOException("Server closed the connection after payload request #" + attempt);
+                    throw new IOException("Server closed the connection after payload request #" + request);
                 }
                 last = r;
-                if (r.code == 101) break;                    // upgraded: raw (or framed) stream starts now
-                if (!isLast) drainBody(up, upIn, r);         // decoy reply: discard it
+                if (r.code == 101) break; // upgraded: raw (or framed) stream starts now
+                if (!isLast) drainBody(up, upIn, r); // discard decoy response body before reading the next reply
             }
 
             if (!noReply) {
@@ -282,6 +289,24 @@ public final class TransportProxy {
         Reply(String s, String h, int c) { statusLine = s; headers = h; code = c; }
     }
 
+    /** Counts complete HTTP request headers in a concatenated payload (including pipelined requests). */
+    private static int countHttpRequests(String payload) {
+        if (payload == null || payload.isEmpty()) return 0;
+        int count = 0;
+        for (int i = 0; i < payload.length();) {
+            int crlf = payload.indexOf("\r\n\r\n", i);
+            int lf = payload.indexOf("\n\n", i);
+            int next;
+            int width;
+            if (crlf >= 0 && (lf < 0 || crlf <= lf)) { next = crlf; width = 4; }
+            else if (lf >= 0) { next = lf; width = 2; }
+            else break;
+            count++;
+            i = next + width;
+        }
+        return count;
+    }
+
     /** True when the bytes end with a blank line, i.e. they complete an HTTP request. */
     private static boolean endsRequest(byte[] d) {
         int n = d.length;
@@ -322,19 +347,51 @@ public final class TransportProxy {
                 left -= n;
             }
         } else if (len < 0) {
-            // No length information: whatever arrives shortly after the headers is body; swallow it.
+            // Some injector endpoints return a close-delimited-style decoy body but keep the
+            // socket alive for the following ACL/upgrade request. With pipelined payloads the
+            // next HTTP status can already be queued behind that body. Stop before that status
+            // line instead of swallowing the 101 response as body data.
             int old = up.getSoTimeout();
             try {
                 up.setSoTimeout(350);
-                byte[] buf = new byte[4096];
-                while (in.read(buf) >= 0) { /* discard */ }
-                throw new EOFException("Server closed while sending the decoy reply");
+                if (in.markSupported()) {
+                    boolean lineStart = true;
+                    while (true) {
+                        if (lineStart) {
+                            in.mark(64);
+                            byte[] probe = new byte[12];
+                            int got = 0;
+                            while (got < probe.length) {
+                                int b = in.read();
+                                if (b < 0) break;
+                                probe[got++] = (byte) b;
+                            }
+                            if (got >= 12 && isHttpStatusPrefix(probe)) {
+                                in.reset();
+                                return;
+                            }
+                            in.reset();
+                        }
+                        int b = in.read();
+                        if (b < 0) return;
+                        lineStart = b == '\n';
+                    }
+                } else {
+                    byte[] buf = new byte[4096];
+                    while (in.read(buf) >= 0) { /* discard */ }
+                }
             } catch (java.net.SocketTimeoutException quiet) {
-                // nothing more to read: body finished
+                // No more decoy bytes arrived in the short quiet window.
             } finally {
                 try { up.setSoTimeout(old); } catch (Exception ignored) { }
             }
         }
+    }
+
+    private static boolean isHttpStatusPrefix(byte[] b) {
+        if (b.length < 12) return false;
+        String s = new String(b, 0, 12, StandardCharsets.ISO_8859_1);
+        return s.matches("HTTP/1\\.[01] [1-5][0-9]{2}.*");
     }
 
     private static void skipChunked(InputStream in) throws IOException {
