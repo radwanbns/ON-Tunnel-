@@ -105,13 +105,13 @@ public class OvpnCoreTest {
         final List<String> errs = Collections.synchronizedList(new ArrayList<String>());
         TransportProxy p = new TransportProxy(c, InetAddress.getByName("127.0.0.1"), errs::add);
         int port = p.start();
-        check("payload relay echo", roundTrip(port, "hello openvpn".getBytes(), 13).equals("HELLO OPENVPN"));
+        check("payload relay echo", roundTrip(port, "\u0001hello openvpn".getBytes(), 14).equals("\u0001HELLO OPENVPN"));
         check("payload header sent w/ host tag", seen[0].contains("Host: vpn.example.com") && seen[0].contains("Upgrade: websocket"));
-        byte[] big = new byte[200000]; Arrays.fill(big, (byte) 'a');
+        byte[] big = new byte[200000]; Arrays.fill(big, (byte) 'a'); big[0] = 1;
         Socket bc = new Socket("127.0.0.1", port); bc.setSoTimeout(8000);
         new Thread(() -> { try { bc.getOutputStream().write(big); bc.getOutputStream().flush(); } catch (Exception e) {} }).start();
         DataInputStream bd = new DataInputStream(bc.getInputStream()); byte[] bb = new byte[200000]; bd.readFully(bb); bc.close();
-        check("payload relay 200KB", bb[0] == 'A' && bb[199999] == 'A');
+        check("payload relay 200KB", bb[0] == 1 && bb[1] == 'A' && bb[199999] == 'A');
         p.stop();
 
         // ---- payload rejected
