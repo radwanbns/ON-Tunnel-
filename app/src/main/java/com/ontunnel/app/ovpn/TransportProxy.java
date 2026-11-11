@@ -43,6 +43,7 @@ public final class TransportProxy {
     private final Listener listener;
     private ServerSocket server;
     private volatile boolean running;
+    private Session preparedSession;
     private final Set<Socket> open = Collections.synchronizedSet(new HashSet<Socket>());
 
     public TransportProxy(TransportConfig cfg, InetAddress dialAddr, Listener listener) {
@@ -68,8 +69,45 @@ public final class TransportProxy {
         return server.getLocalPort();
     }
 
+    /** Performs the payload/WebSocket handshake before OpenVPN is launched. */
+    public void prepare() throws IOException {
+        synchronized (this) {
+            if (preparedSession != null) return;
+            if (!running) throw new IOException("Relay is not running");
+        }
+        IOException lastErr = null;
+        int attempts = Math.max(1, cfg.attempts);
+        for (int i = 0; i < attempts && running; i++) {
+            try {
+                Session ready = connectAndHandshake();
+                synchronized (this) {
+                    if (!running) {
+                        closeQuietly(ready.up);
+                        open.remove(ready.up);
+                        throw new IOException("Relay stopped during transport preparation");
+                    }
+                    if (preparedSession == null) preparedSession = ready;
+                    else { closeQuietly(ready.up); open.remove(ready.up); }
+                }
+                return;
+            } catch (IOException e) {
+                lastErr = e;
+                if (e instanceof Rejected && ((Rejected) e).permanent) break;
+                if (i + 1 < attempts && !pause(500L * (i + 1))) break;
+            }
+        }
+        throw lastErr != null ? lastErr : new IOException("Transport preparation failed");
+    }
+
+    private synchronized Session takePreparedSession() {
+        Session ready = preparedSession;
+        preparedSession = null;
+        return ready;
+    }
+
     public void stop() {
         running = false;
+        synchronized (this) { preparedSession = null; }
         try { if (server != null) server.close(); } catch (IOException ignored) { }
         synchronized (open) {
             for (Socket s : open) closeQuietly(s);
@@ -119,20 +157,23 @@ public final class TransportProxy {
             // The upstream handshake is retried here, BEFORE anything is read from OpenVPN. OpenVPN's own
             // bytes simply wait in the socket buffer, so a dropped dial / reset / 5xx during the handshake
             // never shows up as "Retrying connection" in OpenVPN.
-            IOException lastErr = null;
-            int attempts = Math.max(1, cfg.attempts);
-            for (int i = 0; i < attempts && running; i++) {
-                try {
-                    s = connectAndHandshake();
-                    lastErr = null;
-                    break;
-                } catch (IOException e) {
-                    lastErr = e;
-                    if (e instanceof Rejected && ((Rejected) e).permanent) break;
-                    if (i + 1 < attempts && !pause(500L * (i + 1))) break;
+            s = takePreparedSession();
+            if (s == null) {
+                IOException lastErr = null;
+                int attempts = Math.max(1, cfg.attempts);
+                for (int i = 0; i < attempts && running; i++) {
+                    try {
+                        s = connectAndHandshake();
+                        lastErr = null;
+                        break;
+                    } catch (IOException e) {
+                        lastErr = e;
+                        if (e instanceof Rejected && ((Rejected) e).permanent) break;
+                        if (i + 1 < attempts && !pause(500L * (i + 1))) break;
+                    }
                 }
+                if (s == null) throw lastErr != null ? lastErr : new IOException("Relay stopped");
             }
-            if (s == null) throw lastErr != null ? lastErr : new IOException("Relay stopped");
 
             // Clear read timeouts for the long-lived tunnel
             try { s.up.setSoTimeout(0); } catch (Exception ignored) { }
