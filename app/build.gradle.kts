@@ -75,6 +75,12 @@ android {
         jniLibs {
             // ICS OpenVPN executes its bundled native OpenVPN binary from nativeLibraryDir.
             useLegacyPackaging = true
+
+            // The Universal build must contain ARM libraries only. Keep Intel
+            // libraries in their dedicated APKs from the four-ABI build.
+            if (makeUniversalApk && configuredAbis == listOf("arm64-v8a", "armeabi-v7a")) {
+                excludes += setOf("lib/x86/**", "lib/x86_64/**")
+            }
         }
     }
 
