@@ -1,6 +1,12 @@
 import java.io.ByteArrayOutputStream
 import org.gradle.api.tasks.Exec
 
+val configuredAbis = (findProperty("ABI_FILTERS") as? String)
+    ?.split(";")
+    ?.filter { it.isNotBlank() }
+    ?: listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+val makeUniversalApk = (findProperty("UNIVERSAL_ONLY") as? String)?.toBoolean() ?: true
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -28,7 +34,7 @@ android {
         // Ship ARM and Intel Android architectures.
         ndk {
             abiFilters.clear()
-            abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64"))
+            abiFilters.addAll(configuredAbis)
         }
     }
 
@@ -43,12 +49,8 @@ android {
         abi {
             isEnable = true
             reset()
-            include(
-                *((project.findProperty("ABI_FILTERS") as? String)
-                    ?.split(";")?.toTypedArray()
-                    ?: arrayOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64"))
-            )
-            isUniversalApk = true
+            include(*configuredAbis.toTypedArray())
+            isUniversalApk = makeUniversalApk
         }
     }
 
