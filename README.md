@@ -88,3 +88,17 @@ Replace with your real subscription link. While it still contains `example.com` 
 ## Verification status
 
 The source integration is committed, but a successful GitHub Actions build and real-device tunnel test have not yet been confirmed. TLS, Reality, WebSocket, gRPC and custom JSON profiles should be tested against working server links before distributing a release.
+
+
+## Fix: OpenVPN + payload stuck in CONNECTRETRY
+
+* **HTTP payload mode is now always raw after the reply.** Previously a `101 Switching Protocols` made the relay switch to
+  WebSocket framing even in HTTP-payload mode, which corrupts the stream for injector-style servers (they expect plain OpenVPN bytes
+  after the 101) - OpenVPN then just kept retrying.
+* **Multi-request payloads** (decoy `GET /cdn-cgi/trace` + `ACL / ... Upgrade: websocket`): every complete request gets its own reply
+  read, replies to all but the last are drained (Content-Length, chunked, or length-less bodies) and ignored; only the last reply must be
+  `101` or `2xx`. Explicit `[split]` fragments of a single request are written without waiting for a reply.
+* **Clear errors instead of silent retries:** a 3xx/4xx/5xx final reply now closes the connection and is shown in the red error card
+  ("Server rejected the payload: HTTP/1.1 400 Bad Request").
+* **WebSocket mode** has a new *WebSocket framing (RFC 6455)* switch. Turn it off for servers that become a plain TCP pipe after the 101.
+* New *Decoy + ACL* payload template; tests in `tools/ovpn-core-test` (`PayloadScenarios`, `OvpnCoreTest`) run in CI.
