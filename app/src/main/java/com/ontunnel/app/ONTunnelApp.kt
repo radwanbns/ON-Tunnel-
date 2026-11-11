@@ -1,8 +1,8 @@
 package com.ontunnel.app
 
-import de.blinkt.openvpn.core.ICSOpenVPNApplication
+import android.app.Application
 
-class ONTunnelApp : ICSOpenVPNApplication() {
+class ONTunnelApp : Application() {
     override fun onCreate() {
         super.onCreate()
         // Schedule background subscription updates (needs internet; runs without UI).

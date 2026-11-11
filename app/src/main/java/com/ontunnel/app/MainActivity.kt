@@ -68,7 +68,7 @@ class MainActivity : ComponentActivity() {
     private var availableAppUpdate by mutableStateOf<AppUpdateInfo?>(null)
     private var updateDownloadId: Long = -1L
 
-    // ── Embedded OpenVPN engine ────────────────────────────────────────
+    // ── OpenVPN (through the "OpenVPN for Android" remote API) ──────────
     private var statusDetail by mutableStateOf<String?>(null)
     private var ovpnMissing by mutableStateOf(false)
     private var pendingOvpn: OvpnProfile? = null
@@ -76,10 +76,21 @@ class MainActivity : ComponentActivity() {
     /** "" | "v2ray" | "openvpn" – which engine currently owns the tunnel. */
     private var activeProto = ""
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val ovpn = OpenVpnController(this) { state, message, level -> onOvpnStatus(state, message, level) }
     private val ovpnTimeout = Runnable {
         if (status == VpnStatus.Connecting && !ovpnSawProgress) {
-            failOvpn("OpenVPN connection timed out. Check the server and try again.")
+            failOvpn("OpenVPN for Android did not respond. Open it once, then try again.")
         }
+    }
+
+    private val ovpnApiPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) proceedOvpnVpnPermission()
+        else failOvpn("Permission to control OpenVPN for Android was denied")
+    }
+
+    private val ovpnVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) startOvpnProfile()
+        else failOvpn("VPN permission was denied")
     }
 
     private val vpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -187,10 +198,17 @@ class MainActivity : ComponentActivity() {
         val savedProto = getSharedPreferences("on_tunnel_core", MODE_PRIVATE).getString("active_proto", "").orEmpty()
         activeProto = if (ONTunnelVpnService.running) "v2ray" else savedProto
         if (activeProto == "openvpn") {
-            IcsOpenVpn.observe(
-                onDetail = { detail -> runOnUiThread { if (activeProto == "openvpn") statusDetail = detail } },
-                onStatus = ::onIcsStatus
-            )
+            // The tunnel may still be up in OpenVPN for Android: re-attach to get its current state.
+            if (OpenVpnController.isInstalled(this)) {
+                ovpn.bind { err ->
+                    if (err == null) {
+                        try { if (ovpn.prepareApi() == null) ovpn.register() } catch (_: Exception) { }
+                    }
+                }
+            } else {
+                activeProto = ""
+                persistProto("")
+            }
         }
         ContextCompat.registerReceiver(
             this, stateReceiver, IntentFilter(ONTunnelVpnService.ACTION_STATE),
@@ -279,6 +297,7 @@ class MainActivity : ComponentActivity() {
 
     private fun connectOpenVpn(profile: OvpnProfile) {
         profile.validate()?.let { errorMessage = it; return }
+        if (!OpenVpnController.isInstalled(this)) { ovpnMissing = true; return }
         if (activeProto == "v2ray") {
             startService(Intent(this, ONTunnelVpnService::class.java).setAction(ONTunnelVpnService.ACTION_STOP))
         } else if (activeProto == "openvpn") {
@@ -289,14 +308,29 @@ class MainActivity : ComponentActivity() {
         pendingOvpn = profile
         ovpnSawProgress = false
         status = VpnStatus.Connecting
-        statusDetail = "Starting embedded OpenVPN"
+        statusDetail = "Contacting OpenVPN for Android"
         mainHandler.removeCallbacks(ovpnTimeout)
         mainHandler.postDelayed(ovpnTimeout, 60_000L)
-        IcsOpenVpn.observe(
-            onDetail = { detail -> runOnUiThread { if (activeProto == "openvpn") statusDetail = detail } },
-            onStatus = ::onIcsStatus
-        )
-        startOvpnProfile()
+        ovpn.bind { err ->
+            if (err != null) failOvpn(err) else proceedOvpnApiPermission()
+        }
+    }
+
+    private fun proceedOvpnApiPermission() {
+        val intent = try { ovpn.prepareApi() } catch (e: Exception) {
+            failOvpn("OpenVPN for Android refused access: ${e.message}")
+            return
+        }
+        if (intent != null) ovpnApiPermission.launch(intent) else proceedOvpnVpnPermission()
+    }
+
+    private fun proceedOvpnVpnPermission() {
+        ovpn.register()
+        val intent = try { ovpn.prepareVpn() } catch (e: Exception) {
+            failOvpn("OpenVPN for Android refused access: ${e.message}")
+            return
+        }
+        if (intent != null) ovpnVpnPermission.launch(intent) else startOvpnProfile()
     }
 
     private fun startOvpnProfile() {
@@ -323,10 +357,9 @@ class MainActivity : ComponentActivity() {
 
     private fun launchOvpn(config: String) {
         try {
-            val profile = pendingOvpn ?: error("OpenVPN profile is missing")
-            IcsOpenVpn.start(this, profile.name, config)
+            ovpn.start(config)
         } catch (e: Exception) {
-            failOvpn("OpenVPN error: ${e.message}")
+            failOvpn("OpenVPN for Android error: ${e.message}")
         }
     }
 
@@ -340,7 +373,7 @@ class MainActivity : ComponentActivity() {
         mainHandler.removeCallbacks(ovpnTimeout)
         clearRelayHooks()
         OvpnTunnelService.stop(this)
-        IcsOpenVpn.stop(this)
+        ovpn.bind { err -> if (err == null) ovpn.disconnect() }
         persistProto("")
     }
 
@@ -352,40 +385,21 @@ class MainActivity : ComponentActivity() {
         errorMessage = message.take(300)
     }
 
-    private fun onIcsStatus(event: IcsOpenVpn.Status) {
-        if (Looper.myLooper() != Looper.getMainLooper()) {
-            runOnUiThread { onIcsStatus(event) }
-            return
-        }
+    private fun onOvpnStatus(state: String, message: String, level: String) {
         if (activeProto != "openvpn") return
-        when (event) {
-            IcsOpenVpn.Status.Connected -> {
+        when {
+            state == "CONNECTED" -> {
                 ovpnSawProgress = true
                 mainHandler.removeCallbacks(ovpnTimeout)
                 status = VpnStatus.Connected
                 statusDetail = null
                 errorMessage = null
             }
-            IcsOpenVpn.Status.Connecting -> {
-                ovpnSawProgress = true
-                mainHandler.removeCallbacks(ovpnTimeout)
-                if (status != VpnStatus.Disconnecting) status = VpnStatus.Connecting
-                if (statusDetail.isNullOrBlank()) statusDetail = "Connecting to server"
+            state == "AUTH_FAILED" || level == "LEVEL_AUTH_FAILED" -> {
+                failOvpn("Authentication failed – check the username and password")
             }
-            IcsOpenVpn.Status.Waiting -> {
-                ovpnSawProgress = true
-                mainHandler.removeCallbacks(ovpnTimeout)
-                status = VpnStatus.Connecting
-                statusDetail = "Waiting for network; OpenVPN will retry automatically"
-            }
-            IcsOpenVpn.Status.NeedsUserAction -> {
-                ovpnSawProgress = true
-                mainHandler.removeCallbacks(ovpnTimeout)
-                status = VpnStatus.Connecting
-                statusDetail = "Tap the OpenVPN notification to authorize the VPN connection"
-            }
-            is IcsOpenVpn.Status.Failed -> failOvpn(event.message)
-            IcsOpenVpn.Status.Stopped -> {
+            state == "NOPROCESS" || state == "EXITING" -> {
+                // OpenVPN reports NOPROCESS right after we register, before our profile starts: ignore that one.
                 if (status == VpnStatus.Connecting && !ovpnSawProgress) return
                 mainHandler.removeCallbacks(ovpnTimeout)
                 OvpnTunnelService.stop(this)
@@ -394,18 +408,41 @@ class MainActivity : ComponentActivity() {
                 status = VpnStatus.Disconnected
                 statusDetail = null
             }
+            else -> {
+                ovpnSawProgress = true
+                mainHandler.removeCallbacks(ovpnTimeout)
+                if (status != VpnStatus.Disconnecting) status = VpnStatus.Connecting
+                statusDetail = when (state) {
+                    "CONNECTING", "TCP_CONNECT" -> "Connecting to server"
+                    "WAIT" -> "Waiting for server"
+                    "AUTH" -> "Authenticating"
+                    "GET_CONFIG" -> "Getting configuration"
+                    "ASSIGN_IP" -> "Assigning IP address"
+                    "ADD_ROUTES" -> "Adding routes"
+                    "RECONNECTING" -> "Reconnecting"
+                    "NONETWORK" -> "Waiting for network"
+                    else -> state.lowercase().replaceFirstChar { it.uppercase() }
+                }
+            }
         }
     }
 
     private fun openOvpnStore() {
         ovpnMissing = false
-        Toast.makeText(this, "OpenVPN is built into ON Tunnel", Toast.LENGTH_SHORT).show()
+        val uris = listOf("market://details?id=${OpenVpnController.PKG}", "https://play.google.com/store/apps/details?id=${OpenVpnController.PKG}")
+        for (u in uris) {
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return
+            } catch (_: ActivityNotFoundException) { }
+        }
+        Toast.makeText(this, "Install \"OpenVPN for Android\" from Google Play or F-Droid", Toast.LENGTH_LONG).show()
     }
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(ovpnTimeout)
         clearRelayHooks()
-        IcsOpenVpn.removeObserver()
+        ovpn.release()
         try { unregisterReceiver(stateReceiver) } catch (_: Exception) {}
         try { unregisterReceiver(updateReceiver) } catch (_: Exception) {}
         super.onDestroy()
