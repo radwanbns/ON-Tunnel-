@@ -32,11 +32,9 @@
 -dontwarn go.**
 -keep class com.ontunnel.app.NativeIntegrity { *; }
 
-# Embedded ICS OpenVPN runtime uses reflection, JNI and manifest-declared entry points.
--keep class de.blinkt.openvpn.** { *; }
--keep class net.openvpn.** { *; }
--dontwarn de.blinkt.openvpn.**
--dontwarn net.openvpn.**
+# OpenVPN for Android remote API (AIDL stubs/parcelable must keep their binder descriptors)
+-keep class de.blinkt.openvpn.api.** { *; }
+-dontwarn de.blinkt.openvpn.api.**
 
 # ── Android framework entry points R8 cannot infer on its own ───────────
 -keep public class com.ontunnel.app.MainActivity

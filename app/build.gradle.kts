@@ -1,12 +1,5 @@
 import java.io.ByteArrayOutputStream
 import org.gradle.api.tasks.Exec
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
-val configuredAbis = (findProperty("ABI_FILTERS") as? String)
-    ?.split(";")
-    ?.filter { it.isNotBlank() }
-    ?: listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
-val makeUniversalApk = (findProperty("UNIVERSAL_ONLY") as? String)?.toBoolean() ?: true
 
 plugins {
     id("com.android.application")
@@ -32,6 +25,11 @@ android {
             }
         }
 
+        // Only ship ARM native libs (exclude x86/x86_64 from AARs like libv2ray)
+        ndk {
+            abiFilters.clear()
+            abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a"))
+        }
     }
 
     externalNativeBuild {
@@ -45,8 +43,12 @@ android {
         abi {
             isEnable = true
             reset()
-            include(*configuredAbis.toTypedArray())
-            isUniversalApk = makeUniversalApk
+            include(
+                *((project.findProperty("ABI_FILTERS") as? String)
+                    ?.split(";")?.toTypedArray()
+                    ?: arrayOf("arm64-v8a", "armeabi-v7a"))
+            )
+            isUniversalApk = true
         }
     }
 
@@ -71,16 +73,18 @@ android {
         }
     }
 
+    buildFeatures {
+        aidl = true
+    }
+
     packaging {
         jniLibs {
-            // ICS OpenVPN executes its bundled native OpenVPN binary from nativeLibraryDir.
-            useLegacyPackaging = true
-
-            // The Universal build must contain ARM libraries only. Keep Intel
-            // libraries in their dedicated APKs from the four-ABI build.
-            if (makeUniversalApk && configuredAbis == listOf("arm64-v8a", "armeabi-v7a")) {
-                excludes += setOf("lib/x86/**", "lib/x86_64/**")
-            }
+            excludes += setOf(
+                "**/lib/x86/**",
+                "**/lib/x86_64/**",
+                "**/x86/**",
+                "**/x86_64/**"
+            )
         }
     }
 
@@ -90,10 +94,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlin {
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_17)
-        }
+    kotlinOptions {
+        jvmTarget = "17"
     }
 }
 
@@ -125,10 +127,7 @@ tasks.register("printDebugSha256") {
 
 dependencies {
     implementation(files("libs/libv2ray.aar"))
-    implementation(files("libs/ics-openvpn.aar"))
     implementation("androidx.core:core-ktx:1.15.0")
-    implementation("androidx.annotation:annotation:1.8.2")
-    implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.9.3")
