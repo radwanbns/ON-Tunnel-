@@ -575,7 +575,7 @@ public final class TransportProxy {
         Thread c2u = new Thread(new Runnable() {
             @Override public void run() {
                 try { pump(client.getInputStream(), upOut); } catch (IOException ignored) { }
-                finally { closeQuietly(client); closeQuietly(up); }
+                finally { shutdownOutputQuietly(up); }
             }
         }, "ovpn-relay-c2u");
         c2u.setDaemon(true);
@@ -634,7 +634,7 @@ public final class TransportProxy {
                         synchronized (writeLock) { writeFrame(upOut, 0x2, buf, 0, n); }
                     }
                 } catch (IOException ignored) {
-                } finally { closeQuietly(client); closeQuietly(up); }
+                } finally { shutdownOutputQuietly(up); }
             }
         }, "ovpn-relay-c2u");
         c2u.setDaemon(true);
@@ -695,6 +695,12 @@ public final class TransportProxy {
         f.write(masked);
         out.write(f.toByteArray());
         out.flush();
+    }
+
+    /** Propagate a TCP half-close without killing the reverse data stream. */
+    private static void shutdownOutputQuietly(Socket s) {
+        if (s == null) return;
+        try { s.shutdownOutput(); } catch (IOException ignored) { }
     }
 
     private static void closeQuietly(Socket s) {
