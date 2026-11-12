@@ -27,21 +27,14 @@
 
 # ── Native / JNI bridge – must keep exact names & members ───────────────
 -keep class libv2ray.** { *; }
+-keep class go.** { *; }
 -dontwarn libv2ray.**
+-dontwarn go.**
 -keep class com.ontunnel.app.NativeIntegrity { *; }
 
 # OpenVPN for Android remote API (AIDL stubs/parcelable must keep their binder descriptors)
 -keep class de.blinkt.openvpn.api.** { *; }
 -dontwarn de.blinkt.openvpn.api.**
-
-# SSH client (JSch loads its algorithms by class name, so nothing in it may be renamed or removed)
--keep class com.jcraft.jsch.** { *; }
--dontwarn com.jcraft.jsch.**
--dontwarn org.ietf.jgss.**
--dontwarn org.slf4j.**
--dontwarn org.bouncycastle.**
--dontwarn com.sun.jna.**
--dontwarn javax.security.auth.kerberos.**
 
 # ── Android framework entry points R8 cannot infer on its own ───────────
 -keep public class com.ontunnel.app.MainActivity
