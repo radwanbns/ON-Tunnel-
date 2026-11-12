@@ -202,20 +202,6 @@ jobs:
           s, count = pattern.subn(lambda _: replacement, s, count=1)
           if count != 1: raise SystemExit("Could not replace upstream UDP resolver block; refusing build patch")
 
-          marker="// IsRunning returns whether the client is running"
-          method="""// LocalPort returns the TCP port used by the local tunnel listener.
-          func (c *DnsttClient) LocalPort() int {
-          \tc.mu.Lock()
-          \tdefer c.mu.Unlock()
-          \tif c.listener == nil { return 0 }
-          \taddr, ok := c.listener.Addr().(*net.TCPAddr)
-          \tif !ok { return 0 }
-          \treturn addr.Port
-          }
-
-          """
-          if marker not in s: raise SystemExit("DNSTT LocalPort insertion point not found")
-          s=s.replace(marker,method+marker,1)
           p.write_text(s)
           PY
           sdkmanager="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
