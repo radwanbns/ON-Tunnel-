@@ -178,7 +178,7 @@ class SshTunnelService : Service() {
         return NotificationCompat.Builder(this, channel)
             .setSmallIcon(R.drawable.ic_stat_vpn)
             .setContentTitle("ON Tunnel")
-            .setContentText("SSH tunnel is running")
+            .setContentText("Connected")
             .setOngoing(true)
             .build()
     }
