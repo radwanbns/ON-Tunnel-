@@ -111,6 +111,7 @@ internal fun ONTunnelApp(
     var isUpdating by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var showLogs by remember { mutableStateOf(false) }
+    var serverSearch by rememberSaveable { mutableStateOf("") }
     var showAddSheet by remember { mutableStateOf(false) }
     // Shown on EVERY app launch (rememberSaveable only survives rotation, not a new launch)
     var showTelegram by rememberSaveable { mutableStateOf(true) }
@@ -413,68 +414,126 @@ internal fun ONTunnelApp(
                             )
                         }
                     ) { padding ->
-                        Column(Modifier.fillMaxSize().padding(padding)) {
-                            ConnectHero(
-                                status = status,
-                                detail = statusDetail,
-                                serverName = selected?.name,
-                                serverBadge = null,
-                                busyLocked = status == VpnStatus.Disconnecting,
-                                onClick = ::toggleConnect
-                            )
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Servers", color = TextMain, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                Spacer(Modifier.width(8.dp))
-                                Box(
-                                    Modifier
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(SurfaceHigh)
-                                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                                ) {
-                                    Text("${servers.size}", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                            if (tampered) {
-                                ErrorCard(
-                                    "App signature does not match the official build – connection disabled for your safety.",
-                                    {}
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize().padding(padding),
+                            contentPadding = PaddingValues(bottom = 28.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            item(key = "connection_hero") {
+                                ConnectHero(
+                                    status = status,
+                                    detail = statusDetail,
+                                    serverName = selected?.name,
+                                    serverBadge = null,
+                                    busyLocked = status == VpnStatus.Disconnecting,
+                                    onClick = ::toggleConnect
                                 )
                             }
-                            if (error != null) {
-                                ErrorCard(error, onDismissError)
-                            }
-                            LazyColumn(
-                                modifier = Modifier.weight(1f).fillMaxWidth(),
-                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                if (servers.isEmpty()) {
-                                    item {
-                                        Column(
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .clip(RoundedCornerShape(20.dp))
-                                                .background(SurfaceC)
-                                                .padding(28.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally
+
+                            item(key = "servers_header") {
+                                Column(
+                                    Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Servers", color = TextMain, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                                        Spacer(Modifier.width(8.dp))
+                                        Box(
+                                            Modifier.clip(RoundedCornerShape(10.dp))
+                                                .background(SurfaceHigh)
+                                                .padding(horizontal = 9.dp, vertical = 3.dp)
                                         ) {
-                                            Icon(Icons.Default.Dns, null, tint = Accent, modifier = Modifier.size(36.dp))
-                                            Spacer(Modifier.height(10.dp))
-                                            Text(
-                                                "No servers yet.\nUse the menu ⋮ to add or update.",
-                                                color = TextMuted,
-                                                fontSize = 14.sp,
-                                                textAlign = TextAlign.Center
-                                            )
+                                            Text("${servers.size}", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         }
+                                        Spacer(Modifier.weight(1f))
+                                        Text(
+                                            if (serverSearch.isBlank()) "Choose a server" else "${servers.count { it.name.contains(serverSearch, true) }} found",
+                                            color = TextMuted,
+                                            fontSize = 11.sp
+                                        )
                                     }
-                                } else {
-                                    items(servers, key = { it.id }) { entry ->
+                                    OutlinedTextField(
+                                        value = serverSearch,
+                                        onValueChange = { serverSearch = it },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true,
+                                        placeholder = { Text("Search servers…") },
+                                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Accent) },
+                                        trailingIcon = {
+                                            if (serverSearch.isNotEmpty()) {
+                                                IconButton(onClick = { serverSearch = "" }) {
+                                                    Icon(Icons.Default.Close, contentDescription = "Clear search")
+                                                }
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = Accent,
+                                            unfocusedBorderColor = SurfaceHigh,
+                                            focusedContainerColor = SurfaceC,
+                                            unfocusedContainerColor = SurfaceC
+                                        )
+                                    )
+                                }
+                            }
+
+                            if (tampered) {
+                                item(key = "integrity_error") {
+                                    Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                        ErrorCard(
+                                            "App signature does not match the official build – connection disabled for your safety.",
+                                            {}
+                                        )
+                                    }
+                                }
+                            }
+                            if (error != null) {
+                                item(key = "connection_error") {
+                                    Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                        ErrorCard(error, onDismissError)
+                                    }
+                                }
+                            }
+
+                            val visibleServers = servers.filter {
+                                serverSearch.isBlank() || it.name.contains(serverSearch.trim(), ignoreCase = true)
+                            }
+                            if (servers.isEmpty()) {
+                                item(key = "empty_servers") {
+                                    Column(
+                                        Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                                            .clip(RoundedCornerShape(22.dp))
+                                            .background(SurfaceC)
+                                            .padding(28.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Icon(Icons.Default.Dns, null, tint = Accent, modifier = Modifier.size(38.dp))
+                                        Spacer(Modifier.height(10.dp))
+                                        Text("No servers yet", color = TextMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            "Use the menu to add a server or update your list.",
+                                            color = TextMuted,
+                                            fontSize = 13.sp,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            } else if (visibleServers.isEmpty()) {
+                                item(key = "no_search_results") {
+                                    Text(
+                                        "No servers match your search.",
+                                        color = TextMuted,
+                                        modifier = Modifier.fillMaxWidth().padding(28.dp),
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            } else {
+                                items(visibleServers, key = { it.id }) { entry ->
+                                    Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                                         ServerCard(
                                             entry = entry,
                                             badge = "",
