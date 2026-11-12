@@ -16,8 +16,8 @@ android {
         applicationId = "com.ontunnel.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 11
-        versionName = "1.9"
+        versionCode = 10
+        versionName = "1.8"
 
         externalNativeBuild {
             cmake {
@@ -64,7 +64,7 @@ android {
     buildTypes {
         debug {
             signingConfig = signingConfigs.getByName("stableDebug")
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -79,7 +79,6 @@ android {
 
     packaging {
         jniLibs {
-            pickFirsts += "**/libgojni.so"
             excludes += setOf(
                 "**/lib/x86/**",
                 "**/lib/x86_64/**",
@@ -137,7 +136,5 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
-    // SSH client (maintained JSch fork) for the SSH tunnel types
-    implementation("com.github.mwiede:jsch:0.2.20")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
