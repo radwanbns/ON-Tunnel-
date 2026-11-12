@@ -191,6 +191,42 @@ public class PayloadScenarios {
             p.stop();
         }
 
+        // 8) SSH-TLS style RAW mode: no HTTP handshake, the server speaks first (SSH banner) and it arrives untouched
+        {
+            final ServerSocket ss = new ServerSocket(0, 5, InetAddress.getByName("127.0.0.1"));
+            Thread t = new Thread(() -> { try { while (true) { final Socket x = ss.accept(); new Thread(() -> { try {
+                OutputStream out = x.getOutputStream(); out.write("SSH-2.0-test\r\n".getBytes()); out.flush();
+                byte[] b = new byte[64]; int n; while ((n = x.getInputStream().read(b)) >= 0) { out.write(b, 0, n); out.flush(); }
+            } catch (Exception e) { } }).start(); } } catch (Exception e) { } });
+            t.setDaemon(true); t.start();
+            TransportProxy p = proxy(base(ss.getLocalPort(), TransportConfig.MODE_RAW, ""), new ArrayList<String>());
+            int port = p.start();
+            p.prepare();
+            String got; try { got = roundTrip(port, "", 14); } catch (Exception e) { got = "<" + e.getClass().getSimpleName() + ">"; }
+            check("RAW mode: server banner reaches the client untouched", "SSH-2.0-test\r\n".equals(got));
+            p.stop();
+        }
+
+        // 9) SSH over HTTP payload: junk after the 101 (fake Content-Length) is dropped, the SSH banner is kept
+        {
+            final ServerSocket ss = new ServerSocket(0, 5, InetAddress.getByName("127.0.0.1"));
+            Thread t = new Thread(() -> { try { while (true) { final Socket x = ss.accept(); new Thread(() -> { try {
+                InputStream in = new BufferedInputStream(x.getInputStream()); OutputStream out = x.getOutputStream();
+                hdr(in);
+                out.write("HTTP/1.1 101 Switching Protocols\r\n\r\nContent-Length: 104857600000\r\n\r\nSSH-2.0-test\r\n".getBytes()); out.flush();
+                byte[] b = new byte[64]; int n; while ((n = in.read(b)) >= 0) { out.write(b, 0, n); out.flush(); }
+            } catch (Exception e) { } }).start(); } } catch (Exception e) { } });
+            t.setDaemon(true); t.start();
+            TransportConfig c = base(ss.getLocalPort(), TransportConfig.MODE_PAYLOAD, "GET / HTTP/1.1[crlf]Host: [host][crlf]Upgrade: websocket[crlf][crlf]");
+            c.sshBanner = true;
+            TransportProxy p = proxy(c, new ArrayList<String>());
+            int port = p.start();
+            p.prepare();
+            String got; try { got = roundTrip(port, "", 14); } catch (Exception e) { got = "<" + e.getClass().getSimpleName() + ">"; }
+            check("SSH over payload: junk before the banner is dropped", "SSH-2.0-test\r\n".equals(got));
+            p.stop();
+        }
+
         System.out.println(fails == 0 ? "ALL PAYLOAD SCENARIOS PASSED" : fails + " SCENARIO(S) FAILED");
         System.exit(fails == 0 ? 0 : 1);
     }
