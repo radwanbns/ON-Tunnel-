@@ -377,7 +377,10 @@ class MainActivity : ComponentActivity() {
                 autoReconnectOvpn(msg)
             }
         }
-        OvpnTunnelService.onRelayError = { msg -> if (status != VpnStatus.Connected) errorMessage = msg.take(300) }
+        OvpnTunnelService.onRelayError = { msg ->
+            AppLogs.add(this, "OpenVPN relay transport: ${msg.take(240)}")
+            if (status != VpnStatus.Connected) errorMessage = msg.take(300)
+        }
         statusDetail = "Starting transport relay"
         try {
             OvpnTunnelService.start(this, profile)
