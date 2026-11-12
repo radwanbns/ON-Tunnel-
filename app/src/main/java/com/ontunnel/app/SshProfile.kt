@@ -65,8 +65,15 @@ data class SshProfile(
         if (name.isBlank()) return "Name is required"
         if (isDnstt) {
             if (dnsServer.isBlank()) return "DNS resolver is missing"
-            if (dnsServer.startsWith("http://", true) || dnsServer.startsWith("https://", true))
-                return "Use a UDP DNS resolver address (IP or hostname, optionally :port)"
+            val resolver = dnsServer.trim()
+            val isDoh = resolver.startsWith("https://", true)
+            val isDot = resolver.startsWith("tls://", true) || resolver.startsWith("dot://", true)
+            if (resolver.startsWith("http://", true)) return "DoH requires HTTPS"
+            if (!isDoh && !isDot && (resolver.contains("://") || resolver.contains("/") || resolver.contains("?")))
+                return "Use UDP host[:port], DoH https://.../dns-query, or DoT tls://host[:853]"
+            if (isDoh && !resolver.substringAfter("://").contains("/"))
+                return "DoH URL must include /dns-query"
+            if (isDot && resolver.substringAfter("://").isBlank()) return "DoT hostname is missing"
             if (dnsDomain.isBlank()) return "DNSTT tunnel domain is missing"
             if (dnsKey.isBlank()) return "DNSTT public key is missing"
             if (username.isBlank()) return "SSH username is missing"
