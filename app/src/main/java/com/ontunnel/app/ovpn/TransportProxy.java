@@ -89,6 +89,8 @@ public final class TransportProxy {
         synchronized (this) {
             if (!running) throw new IOException("Relay is not running");
         }
+        // Opt-in only: the real tunnel is then opened when OpenVPN connects (no prepared session).
+        if (cfg.deferPreflight) return;
         IOException lastErr = null;
         int attempts = Math.max(1, cfg.attempts);
         for (int i = 0; i < attempts && running; i++) {
@@ -106,7 +108,7 @@ public final class TransportProxy {
                 return;
             } catch (IOException e) {
                 lastErr = e;
-                if (e instanceof Rejected && ((Rejected) e).permanent && i >= 1) break;
+                if (e instanceof Rejected && ((Rejected) e).permanent) break;
                 if (i + 1 < attempts && !pause(400L * (i + 1))) break;
             }
         }
@@ -191,7 +193,7 @@ public final class TransportProxy {
                     break;
                 } catch (IOException e) {
                     lastErr = e;
-                    if (e instanceof Rejected && ((Rejected) e).permanent && i >= 1) break;
+                    if (e instanceof Rejected && ((Rejected) e).permanent) break;
                     if (i + 1 < attempts && !pause(300L * (i + 1))) break;
                 }
             }
