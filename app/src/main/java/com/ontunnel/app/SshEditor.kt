@@ -89,8 +89,8 @@ internal fun SshEditorScreen(
             }
 
             if (p.isDnstt) {
-                SshHint("DNSTT is now started as the transport for SSH. Enter a UDP DNS resolver (IP or hostname, optionally :port), the tunnel NS domain, and the server public key.", Accent)
-                Field("DNS resolver (UDP / IP or hostname)", p.dnsServer, { p = p.copy(dnsServer = it) })
+                SshHint("Choose UDP DNS (1.1.1.1:53), DoH (https://cloudflare-dns.com/dns-query), or DoT (tls://1.1.1.1:853). Then enter the tunnel NS domain and server public key.", Accent)
+                Field("DNS resolver (UDP / DoH / DoT)", p.dnsServer, { p = p.copy(dnsServer = it) })
                 Field("Tunnel domain (NS)", p.dnsDomain, { p = p.copy(dnsDomain = it) })
                 OutlinedTextField(
                     value = p.dnsKey, onValueChange = { p = p.copy(dnsKey = it) },
