@@ -147,7 +147,7 @@ public class OvpnCoreTest {
         int hpPort = hproxy.start();
         hproxy.prepare();
         check("HTTP proxy CONNECT uses first real tunnel without disposable preflight",
-                roundTrip(hpPort, "http-proxy".getBytes(), 10).equals("HTTP-PROXY") && proxyConnects[0] == 1);
+                roundTrip(hpPort, "\\u0001http-proxy".getBytes(), 11).equals("\\u0001HTTP-PROXY") && proxyConnects[0] == 1);
         hproxy.stop();
         try { proxySrv.close(); } catch (Exception ignored) { }
 
