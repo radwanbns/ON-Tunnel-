@@ -64,7 +64,7 @@ android {
     buildTypes {
         debug {
             signingConfig = signingConfigs.getByName("stableDebug")
-            isMinifyEnabled = true
+            isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -126,6 +126,7 @@ tasks.register("printDebugSha256") {
 }
 
 dependencies {
+    implementation("com.github.mwiede:jsch:0.2.20")
     implementation(files("libs/libv2ray.aar"))
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
