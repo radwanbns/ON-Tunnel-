@@ -9,6 +9,8 @@ public final class TransportConfig {
      * any 101 / 2xx reply (or no reply at all) switches to a raw pipe, no WebSocket framing ever.
      */
     public static final int MODE_LEGACY = 3;
+    /** No HTTP handshake at all: dial (optionally over TLS) and relay the bytes untouched (SSH-over-TLS). */
+    public static final int MODE_RAW = 4;
 
     /** WebSocket framing policy (MODE_WEBSOCKET only, after a 101 reply). */
     public static final int FRAMING_AUTO = 0;    // framed only if the server proves it is RFC 6455 (Sec-WebSocket-Accept)
@@ -43,4 +45,9 @@ public final class TransportConfig {
     public int attempts = 3;
     /** Skip the disposable preflight CONNECT for HTTP proxies; open the real tunnel only when OpenVPN connects. */
     public boolean deferPreflight = false;
+    /**
+     * The tunnelled protocol is SSH: after the HTTP reply, discard any leading text until the server's
+     * "SSH-" identification banner (injector gateways often prepend junk such as a fake Content-Length).
+     */
+    public boolean sshBanner = false;
 }

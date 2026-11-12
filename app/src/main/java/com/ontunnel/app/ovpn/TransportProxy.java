@@ -230,6 +230,12 @@ public final class TransportProxy {
             BufferedInputStream upIn = new BufferedInputStream(up.getInputStream(), 16 * 1024);
             OutputStream upOut = up.getOutputStream();
 
+            if (cfg.mode == TransportConfig.MODE_RAW) {
+                // TLS-only / plain pipe: nothing to negotiate, the TLS handshake already happened in openUpstream().
+                done = true;
+                return new Session(up, upIn, upOut, false);
+            }
+
             final boolean wsMode = cfg.mode == TransportConfig.MODE_WEBSOCKET;
             // MODE_PAYLOAD and MODE_LEGACY are lenient: any 2xx is a valid "go raw" signal.
             final boolean lenient = !wsMode;
@@ -612,7 +618,9 @@ public final class TransportProxy {
         }, "ovpn-relay-c2u");
         c2u.setDaemon(true);
         c2u.start();
-        pumpOpenVpnDown(upIn, client.getOutputStream(), rxBytes);
+        if (cfg.mode == TransportConfig.MODE_RAW) pump(upIn, client.getOutputStream(), rxBytes);
+        else if (cfg.sshBanner) pumpSshDown(upIn, client.getOutputStream(), rxBytes);
+        else pumpOpenVpnDown(upIn, client.getOutputStream(), rxBytes);
         if (running) throw new IOException("Upstream server closed the raw TCP relay");
     }
 
@@ -639,6 +647,39 @@ public final class TransportProxy {
                 counter.addAndGet(n - off);
             }
         }
+    }
+
+    /** SSH variant of {@link #pumpOpenVpnDown}: drops everything before the first "SSH-" banner, then relays raw. */
+    private static void pumpSshDown(InputStream in, OutputStream out, AtomicLong counter) throws IOException {
+        byte[] buf = new byte[16 * 1024];
+        ByteArrayOutputStream head = new ByteArrayOutputStream();
+        boolean found = false;
+        int n;
+        while ((n = in.read(buf)) >= 0) {
+            if (n == 0) continue;
+            if (!found) {
+                head.write(buf, 0, n);
+                byte[] h = head.toByteArray();
+                int idx = indexOfSshBanner(h);
+                if (idx < 0 && h.length < 8192) continue;   // keep waiting for the banner
+                int start = Math.max(idx, 0);
+                out.write(h, start, h.length - start);
+                out.flush();
+                counter.addAndGet(h.length - start);
+                found = true;
+                continue;
+            }
+            out.write(buf, 0, n);
+            out.flush();
+            counter.addAndGet(n);
+        }
+    }
+
+    static int indexOfSshBanner(byte[] h) {
+        for (int i = 0; i + 3 < h.length; i++) {
+            if (h[i] == 'S' && h[i + 1] == 'S' && h[i + 2] == 'H' && h[i + 3] == '-') return i;
+        }
+        return -1;
     }
 
     private static boolean isLeadingTextByte(byte value) {
