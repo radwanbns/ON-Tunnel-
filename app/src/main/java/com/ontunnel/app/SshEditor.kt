@@ -88,27 +88,11 @@ internal fun SshEditorScreen(
                 } else next
             }
 
-            if (p.isDnstt) {
-                SshHint("Choose UDP DNS (1.1.1.1:53), DoH (https://cloudflare-dns.com/dns-query), or DoT (tls://1.1.1.1:853). Then enter the tunnel NS domain and server public key.", Accent)
-                Field("DNS resolver (UDP / DoH / DoT)", p.dnsServer, { p = p.copy(dnsServer = it) })
-                Field("Tunnel domain (NS)", p.dnsDomain, { p = p.copy(dnsDomain = it) })
-                OutlinedTextField(
-                    value = p.dnsKey, onValueChange = { p = p.copy(dnsKey = it) },
-                    label = { Text("DNSTT public key") }, minLines = 2, maxLines = 4,
-                    textStyle = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            if (p.isDnstt) {
-                SshHint("The SSH destination host and port are configured on the DNSTT server. This app connects to the local DNSTT client endpoint.", TextMuted)
-            } else {
-                SshSection("SSH server")
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(Modifier.weight(1f)) { Field("SSH host", p.host, { p = p.copy(host = it) }) }
-                    Box(Modifier.width(100.dp)) {
-                        Field("Port", portText, { portText = it.filter(Char::isDigit).take(5) }, KeyboardType.Number)
-                    }
+            SshSection("SSH server")
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.weight(1f)) { Field("SSH host", p.host, { p = p.copy(host = it) }) }
+                Box(Modifier.width(100.dp)) {
+                    Field("Port", portText, { portText = it.filter(Char::isDigit).take(5) }, KeyboardType.Number)
                 }
             }
 
