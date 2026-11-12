@@ -64,10 +64,6 @@ android {
     buildTypes {
         debug {
             signingConfig = signingConfigs.getByName("stableDebug")
-            // Keep gomobile's generated mobile.Mobile entry point intact.
-            // This project ships the debug variant as its installable APK, so
-            // R8 shrinking/repackaging is disabled until DNSTT runtime packaging
-            // is verified on-device.
             isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(
@@ -132,7 +128,6 @@ tasks.register("printDebugSha256") {
 
 dependencies {
     implementation(files("libs/libv2ray.aar"))
-    implementation(files("libs/dnstt.aar"))
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
