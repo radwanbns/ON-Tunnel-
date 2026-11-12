@@ -168,8 +168,8 @@ public final class TransportProxy {
             if (s == null) throw lastErr != null ? lastErr : new IOException("Relay stopped");
 
             // Clear read timeouts for the long-lived tunnel
-            try { s.up.setSoTimeout(0); } catch (Exception ignored) { }
-            try { client.setSoTimeout(0); } catch (Exception ignored) { }
+            try { s.up.setSoTimeout(0); s.up.setKeepAlive(true); s.up.setTcpNoDelay(true); } catch (Exception ignored) { }
+            try { client.setSoTimeout(0); client.setKeepAlive(true); client.setTcpNoDelay(true); } catch (Exception ignored) { }
 
             if (s.framed) {
                 relayWebSocket(client, s.upIn, s.upOut, s.up);
@@ -580,7 +580,8 @@ public final class TransportProxy {
         }, "ovpn-relay-c2u");
         c2u.setDaemon(true);
         c2u.start();
-        try { pumpOpenVpnDown(upIn, client.getOutputStream()); } catch (IOException ignored) { }
+        pumpOpenVpnDown(upIn, client.getOutputStream());
+        if (running) throw new IOException("Upstream server closed the raw TCP relay");
     }
 
     /**
@@ -645,9 +646,9 @@ public final class TransportProxy {
         try {
             while (true) {
                 int b0 = din.read();
-                if (b0 < 0) return;
+                if (b0 < 0) throw new IOException("Upstream server closed the WebSocket relay");
                 int b1 = din.read();
-                if (b1 < 0) return;
+                if (b1 < 0) throw new IOException("Incomplete WebSocket frame from upstream server");
                 int op = b0 & 0x0f;
                 boolean masked = (b1 & 0x80) != 0;
                 long len = b1 & 0x7f;
@@ -659,7 +660,7 @@ public final class TransportProxy {
                 byte[] data = new byte[(int) len];
                 din.readFully(data);
                 if (mask != null) for (int i = 0; i < data.length; i++) data[i] ^= mask[i & 3];
-                if (op == 0x8) return;                       // close
+                if (op == 0x8) throw new IOException("Upstream server sent a WebSocket close frame");
                 if (op == 0x9) {                             // ping -> pong
                     synchronized (writeLock) { writeFrame(upOut, 0xA, data, 0, data.length); }
                 } else if (op == 0xA) {
@@ -669,11 +670,8 @@ public final class TransportProxy {
                     cout.flush();
                 }
             }
-        } catch (IOException ignored) {
         }
     }
-
-    /** Writes one masked (client->server) FIN frame. */
     static void writeFrame(OutputStream out, int opcode, byte[] data, int off, int len) throws IOException {
         ByteArrayOutputStream f = new ByteArrayOutputStream(len + 14);
         f.write(0x80 | opcode);
