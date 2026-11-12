@@ -14,7 +14,9 @@ object SshMode {
     const val TLS_PROXY = "SSH-TLS-Proxy"
     const val TLS_PAYLOAD = "SSH-TLS-Payload"
     const val TLS_PROXY_PAYLOAD = "SSH-TLS-Proxy-Payload"
-    val all = listOf(DIRECT, PROXY, PAYLOAD, PROXY_PAYLOAD, TLS, TLS_PROXY, TLS_PAYLOAD, TLS_PROXY_PAYLOAD)
+    const val DNSTT = "SSH-DNSTT"
+
+    val all = listOf(DIRECT, PROXY, PAYLOAD, PROXY_PAYLOAD, TLS, TLS_PROXY, TLS_PAYLOAD, TLS_PROXY_PAYLOAD, DNSTT)
 
     const val AUTH_PASSWORD = "Password"
     const val AUTH_KEY = "Private key"
@@ -47,15 +49,21 @@ data class SshProfile(
     val payload: String = "",
     val sni: String = "",
     val allowInsecure: Boolean = true,
+    /** SSH-DNSTT fields (kept so the entry is not lost; the DNSTT core is not bundled yet). */
+    val dnsServer: String = "",
+    val dnsDomain: String = "",
+    val dnsKey: String = ""
 ) {
     val usesTls: Boolean get() = mode.contains("TLS")
     val usesProxy: Boolean get() = mode.contains("Proxy")
     val usesPayload: Boolean get() = mode.contains("Payload")
+    val isDnstt: Boolean get() = mode == SshMode.DNSTT
     val usesKey: Boolean get() = authType == SshMode.AUTH_KEY
 
     /** Returns an error message, or null when the profile can be used. */
     fun validate(): String? {
         if (name.isBlank()) return "Name is required"
+        if (isDnstt) return "SSH-DNSTT needs the DNSTT core, which is not bundled in this build yet"
         if (host.isBlank()) return "SSH server address is missing"
         if (port !in 1..65535) return "Invalid SSH port"
         if (username.isBlank()) return "SSH username is missing"
@@ -133,6 +141,7 @@ data class SshProfile(
         .put("password", password).put("privateKey", privateKey).put("passphrase", passphrase)
         .put("proxyHost", proxyHost).put("proxyPort", proxyPort)
         .put("payload", payload).put("sni", sni).put("allowInsecure", allowInsecure)
+        .put("dnsServer", dnsServer).put("dnsDomain", dnsDomain).put("dnsKey", dnsKey)
 
     companion object {
         fun fromJson(text: String): SshProfile? = try {
@@ -151,7 +160,10 @@ data class SshProfile(
                 proxyPort = o.optInt("proxyPort", 8080),
                 payload = o.optString("payload"),
                 sni = o.optString("sni"),
-                allowInsecure = o.optBoolean("allowInsecure", true)
+                allowInsecure = o.optBoolean("allowInsecure", true),
+                dnsServer = o.optString("dnsServer"),
+                dnsDomain = o.optString("dnsDomain"),
+                dnsKey = o.optString("dnsKey")
             )
         } catch (_: Exception) { null }
     }
