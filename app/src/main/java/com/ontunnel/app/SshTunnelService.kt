@@ -95,7 +95,8 @@ class SshTunnelService : Service() {
                 }
                 dnsttStop = { client.stop() }
                 host = "127.0.0.1"
-                port = localPort
+                require(localPort in 1L..65535L) { "DNSTT returned an invalid local port: $localPort" }
+                port = localPort.toInt()
                 AppLogs.add(this, "DNSTT ready on 127.0.0.1:$localPort; starting SSH")
             }
             val t = profile.toTransport()
