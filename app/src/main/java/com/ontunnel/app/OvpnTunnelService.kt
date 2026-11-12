@@ -24,6 +24,30 @@ import java.util.LinkedHashSet
 class OvpnTunnelService : Service() {
     private var proxy: TransportProxy? = null
     private val main = Handler(Looper.getMainLooper())
+    private var lastRx = 0L
+    private var lastTx = 0L
+    private var lastAt = 0L
+    private val ticker = object : Runnable {
+        override fun run() {
+            val p = proxy
+            if (p != null) {
+                val now = System.nanoTime()
+                val rx = p.rxBytes(); val tx = p.txBytes()
+                val dt = if (lastAt == 0L) 1.0 else (now - lastAt) / 1e9
+                val down = if (dt > 0) ((rx - lastRx) / dt).toLong() else 0L
+                val up = if (dt > 0) ((tx - lastTx) / dt).toLong() else 0L
+                lastRx = rx; lastTx = tx; lastAt = now
+                getSystemService(NotificationManager::class.java)
+                    .notify(NOTIFICATION_ID, notification("↓ ${speed(down)}   ↑ ${speed(up)}"))
+                main.postDelayed(this, 1000L)
+            }
+        }
+    }
+
+    private fun speed(bytesPerSec: Long): String = when {
+        bytesPerSec >= 1024L * 1024L -> String.format(java.util.Locale.US, "%.1f MB/s", bytesPerSec / 1048576.0)
+        else -> String.format(java.util.Locale.US, "%d KB/s", bytesPerSec / 1024L)
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -40,7 +64,7 @@ class OvpnTunnelService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        startForeground(NOTIFICATION_ID, notification())
+        startForeground(NOTIFICATION_ID, notification("↓ 0 KB/s   ↑ 0 KB/s"))
         Thread { begin(profile) }.start()
         return START_NOT_STICKY
     }
@@ -55,6 +79,9 @@ class OvpnTunnelService : Service() {
             val p = TransportProxy(t, ordered) { msg -> report { onRelayError?.invoke(msg) } }
             val port = p.start()
             proxy = p
+            lastRx = 0L; lastTx = 0L; lastAt = 0L
+            main.removeCallbacks(ticker)
+            main.post(ticker)
             AppLogs.add(this, "OpenVPN relay listening on 127.0.0.1:$port")
             // Complete the upstream TCP/TLS + payload/WebSocket handshake first.
             // OpenVPN is launched only after a ready transport session is waiting in the relay.
@@ -103,23 +130,36 @@ class OvpnTunnelService : Service() {
     private fun report(block: () -> Unit) { main.post(block) }
 
     override fun onDestroy() {
+        main.removeCallbacks(ticker)
         proxy?.stop()
         proxy = null
         super.onDestroy()
     }
 
-    private fun notification(): Notification {
-        val channel = "on_tunnel_relay"
+    private fun notification(text: String): Notification {
+        val channel = "on_tunnel_relay_speed"
         if (Build.VERSION.SDK_INT >= 26) {
             getSystemService(NotificationManager::class.java).createNotificationChannel(
-                NotificationChannel(channel, "ON Tunnel transport", NotificationManager.IMPORTANCE_LOW)
+                NotificationChannel(channel, "ON Tunnel", NotificationManager.IMPORTANCE_LOW).apply {
+                    setShowBadge(false)
+                    setSound(null, null)
+                    enableVibration(false)
+                }
             )
         }
+        val open = android.app.PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
         return NotificationCompat.Builder(this, channel)
             .setSmallIcon(R.drawable.ic_stat_vpn)
             .setContentTitle("ON Tunnel")
-            .setContentText("OpenVPN transport relay is running")
+            .setContentText(text)
+            .setContentIntent(open)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setShowWhen(false)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
     }
 

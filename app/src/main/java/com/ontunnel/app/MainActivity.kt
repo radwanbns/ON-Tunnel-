@@ -80,9 +80,6 @@ class MainActivity : ComponentActivity() {
     private var ovpnSawProgress = false
     /** "" | "v2ray" | "openvpn" – which engine currently owns the tunnel. */
     private var activeProto = ""
-
-    /** True while an SSH tunnel is being set up / running. Reads the service itself, so a re-created Activity still knows. */
-    private fun sshActive() = activeProto == "ssh" || SshTunnelService.running
     private val mainHandler = Handler(Looper.getMainLooper())
     private val ovpn = OpenVpnController(this) { state, message, level -> onOvpnStatus(state, message, level) }
     /** True from "Connect" until the user (or a fatal error) stops the OpenVPN tunnel. Drives auto-reconnect. */
@@ -114,7 +111,6 @@ class MainActivity : ComponentActivity() {
 
     private val vpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) pendingConfig?.let(::startVpn)
-        else if (activeProto == "ssh") failSsh("VPN permission was denied")
     }
 
     private val notificationPermission =
@@ -124,20 +120,12 @@ class MainActivity : ComponentActivity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (activeProto == "openvpn") return
             when (intent?.getStringExtra(ONTunnelVpnService.EXTRA_STATE)) {
-                "connected" -> { AppLogs.add(this@MainActivity, "${if (sshActive()) "SSH" else "V2Ray"} tunnel connected"); status = VpnStatus.Connected; statusDetail = null; errorMessage = null }
-                "disconnected" -> {
-                    AppLogs.add(this@MainActivity, "Tunnel disconnected")
-                    status = VpnStatus.Disconnected
-                    statusDetail = null
-                    if (sshActive()) { clearSshHooks(); SshTunnelService.stop(this@MainActivity) }
-                    if (activeProto == "v2ray" || activeProto == "ssh") activeProto = ""
-                }
+                "connected" -> { AppLogs.add(this@MainActivity, "V2Ray tunnel connected"); status = VpnStatus.Connected; errorMessage = null }
+                "disconnected" -> { AppLogs.add(this@MainActivity, "V2Ray tunnel disconnected"); status = VpnStatus.Disconnected; if (activeProto == "v2ray") activeProto = "" }
                 "error" -> {
                     val detail = intent.getStringExtra(ONTunnelVpnService.EXTRA_ERROR).orEmpty().take(300)
                     AppLogs.add(this@MainActivity, "V2Ray error: $detail")
                     status = VpnStatus.Disconnected
-                    statusDetail = null
-                    if (sshActive()) { clearSshHooks(); SshTunnelService.stop(this@MainActivity); activeProto = "" }
                     errorMessage = detail
                 }
             }
@@ -226,7 +214,7 @@ class MainActivity : ComponentActivity() {
         }
         tamperDetected = false
         val savedProto = getSharedPreferences("on_tunnel_core", MODE_PRIVATE).getString("active_proto", "").orEmpty()
-        activeProto = if (SshTunnelService.running) "ssh" else if (ONTunnelVpnService.running) "v2ray" else savedProto
+        activeProto = if (ONTunnelVpnService.running) "v2ray" else savedProto
         if (activeProto == "openvpn") {
             // The tunnel may still be up in OpenVPN for Android: re-attach to get its current state.
             if (OpenVpnController.isInstalled(this)) {
@@ -280,10 +268,7 @@ class MainActivity : ComponentActivity() {
 
     private fun connect(entry: ServerEntry) {
         errorMessage = null
-        if (entry.isSsh) {
-            val profile = SshProfile.fromJson(entry.config)
-            if (profile == null) errorMessage = "Invalid SSH profile" else connectSsh(profile)
-        } else if (entry.isOpenVpn) {
+        if (entry.isOpenVpn) {
             val profile = OvpnProfile.fromJson(entry.config)
             if (profile == null) errorMessage = "Invalid OpenVPN profile" else connectOpenVpn(profile)
         } else {
@@ -294,9 +279,6 @@ class MainActivity : ComponentActivity() {
     private fun connectV2Ray(config: String) {
         if (activeProto == "openvpn") {
             stopOvpn()
-        } else if (sshActive()) {
-            clearSshHooks()
-            SshTunnelService.stop(this)
         }
         activeProto = "v2ray"
         statusDetail = null
@@ -309,7 +291,6 @@ class MainActivity : ComponentActivity() {
         val intent = Intent(this, ONTunnelVpnService::class.java)
             .setAction(ONTunnelVpnService.ACTION_START)
             .putExtra(ONTunnelVpnService.EXTRA_CONFIG, config)
-            .putExtra(ONTunnelVpnService.EXTRA_PROTOCOL, if (activeProto == "ssh") "SSH" else "V2Ray")
         ContextCompat.startForegroundService(this, intent)
         status = VpnStatus.Connecting
     }
@@ -323,62 +304,8 @@ class MainActivity : ComponentActivity() {
             statusDetail = null
             return
         }
-        if (sshActive()) {
-            clearSshHooks()
-            SshTunnelService.stop(this)
-        }
         startService(Intent(this, ONTunnelVpnService::class.java).setAction(ONTunnelVpnService.ACTION_STOP))
         status = VpnStatus.Disconnecting
-    }
-
-    // ── SSH flow ───────────────────────────────────────────────────────
-
-    private fun connectSsh(profile: SshProfile) {
-        AppLogs.add(this, "SSH connection requested: ${profile.name} (${profile.mode})")
-        profile.validate()?.let { AppLogs.add(this, "SSH profile error: $it"); errorMessage = it; return }
-        if (activeProto == "openvpn") {
-            stopOvpn()
-        } else if (activeProto == "v2ray" || activeProto == "ssh") {
-            clearSshHooks()
-            SshTunnelService.stop(this)
-            startService(Intent(this, ONTunnelVpnService::class.java).setAction(ONTunnelVpnService.ACTION_STOP))
-        }
-        activeProto = "ssh"
-        status = VpnStatus.Connecting
-        statusDetail = "Connecting over SSH"
-        SshTunnelService.onReady = { socksPort ->
-            statusDetail = "Starting tunnel"
-            val config = profile.buildXrayConfig(socksPort)
-            pendingConfig = config
-            val permission = VpnService.prepare(this)
-            if (permission != null) vpnPermission.launch(permission) else startVpn(config)
-        }
-        SshTunnelService.onFailed = { msg -> failSsh(msg) }
-        SshTunnelService.onDropped = { msg ->
-            if (status == VpnStatus.Connected || status == VpnStatus.Connecting) failSsh(msg)
-        }
-        try {
-            SshTunnelService.start(this, profile)
-        } catch (e: Exception) {
-            failSsh(e.message ?: "Could not start the SSH service")
-        }
-    }
-
-    private fun clearSshHooks() {
-        SshTunnelService.onReady = null
-        SshTunnelService.onFailed = null
-        SshTunnelService.onDropped = null
-    }
-
-    private fun failSsh(message: String) {
-        AppLogs.add(this, "SSH failed: ${message.take(300)}")
-        clearSshHooks()
-        SshTunnelService.stop(this)
-        startService(Intent(this, ONTunnelVpnService::class.java).setAction(ONTunnelVpnService.ACTION_STOP))
-        activeProto = ""
-        status = VpnStatus.Disconnected
-        statusDetail = null
-        errorMessage = message.take(300)
     }
 
     // ── OpenVPN flow ───────────────────────────────────────────────────
@@ -391,8 +318,7 @@ class MainActivity : ComponentActivity() {
         AppLogs.add(this, "OpenVPN connection requested: ${profile.name}")
         profile.validate()?.let { AppLogs.add(this, "OpenVPN profile error: $it"); errorMessage = it; return }
         if (!OpenVpnController.isInstalled(this)) { ovpnMissing = true; return }
-        if (activeProto == "v2ray" || activeProto == "ssh") {
-            if (activeProto == "ssh") { clearSshHooks(); SshTunnelService.stop(this) }
+        if (activeProto == "v2ray") {
             startService(Intent(this, ONTunnelVpnService::class.java).setAction(ONTunnelVpnService.ACTION_STOP))
         } else if (activeProto == "openvpn") {
             stopOvpn()
@@ -510,6 +436,7 @@ class MainActivity : ComponentActivity() {
                 status = VpnStatus.Connected
                 statusDetail = null
                 errorMessage = null
+                hintHideOvpnNotification()
             }
             state == "AUTH_FAILED" || level == "LEVEL_AUTH_FAILED" -> {
                 failOvpn("Authentication failed – check the username and password")
@@ -589,6 +516,24 @@ class MainActivity : ComponentActivity() {
         }, 2500L)
     }
 
+    /**
+     * The persistent "OpenVPN for Android" notification belongs to that app and cannot be removed from here.
+     * Once, open its notification settings so the user can switch it off (the tunnel keeps running);
+     * ON Tunnel's own notification (app name + KB/s / MB/s) stays visible.
+     */
+    private fun hintHideOvpnNotification() {
+        val prefs = getSharedPreferences("on_tunnel_core", MODE_PRIVATE)
+        if (prefs.getBoolean("ovpn_notif_hint", false)) return
+        prefs.edit().putBoolean("ovpn_notif_hint", true).apply()
+        try {
+            val i = Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, OpenVpnController.PKG)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            Toast.makeText(this, "أوقف إشعارات OpenVPN for Android لإخفائها (الاتصال سيبقى يعمل)", Toast.LENGTH_LONG).show()
+            startActivity(i)
+        } catch (_: Exception) { }
+    }
+
     private fun openOvpnStore() {
         ovpnMissing = false
         val uris = listOf("market://details?id=${OpenVpnController.PKG}", "https://play.google.com/store/apps/details?id=${OpenVpnController.PKG}")
@@ -598,13 +543,12 @@ class MainActivity : ComponentActivity() {
                 return
             } catch (_: ActivityNotFoundException) { }
         }
-        Toast.makeText(this, "Install \"OpenVPN for Android\" from Google Play or F-Droid", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "Install "OpenVPN for Android" from Google Play or F-Droid", Toast.LENGTH_LONG).show()
     }
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(ovpnTimeout)
         clearRelayHooks()
-        clearSshHooks()
         ovpn.release()
         try { unregisterReceiver(stateReceiver) } catch (_: Exception) {}
         try { unregisterReceiver(updateReceiver) } catch (_: Exception) {}

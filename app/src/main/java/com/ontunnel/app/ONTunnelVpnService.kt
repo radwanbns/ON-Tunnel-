@@ -16,7 +16,6 @@ import libv2ray.CoreController
 import libv2ray.Libv2ray
 
 class ONTunnelVpnService : VpnService() {
-    private var protocolLabel: String = "V2Ray"
     private var tun: ParcelFileDescriptor? = null
     private var core: CoreController? = null
 
@@ -39,8 +38,7 @@ class ONTunnelVpnService : VpnService() {
                     stopSelf()
                     return START_NOT_STICKY
                 }
-                protocolLabel = intent.getStringExtra(EXTRA_PROTOCOL)?.takeIf { it == "SSH" } ?: "V2Ray"
-                startForeground(NOTIFICATION_ID, notification("$protocolLabel Connecting"))
+                startForeground(NOTIFICATION_ID, notification())
                 Thread { startTunnel(config) }.start()
             }
         }
@@ -70,7 +68,6 @@ class ONTunnelVpnService : VpnService() {
             core = Libv2ray.newCoreController(callback)
             core!!.startLoop(finalConfig, tun!!.fd.toLong().toInt())
             running = true
-            updateNotification("$protocolLabel Connected")
             sendBroadcast(
                 Intent(ACTION_STATE).setPackage(packageName).putExtra(EXTRA_STATE, "connected")
             )
@@ -139,14 +136,7 @@ class ONTunnelVpnService : VpnService() {
         super.onDestroy()
     }
 
-    private fun updateNotification(status: String) {
-        try {
-            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(status))
-        } catch (_: Exception) {
-        }
-    }
-
-    private fun notification(status: String): Notification {
+    private fun notification(): Notification {
         val channel = "on_tunnel_vpn"
         if (Build.VERSION.SDK_INT >= 26) {
             getSystemService(NotificationManager::class.java).createNotificationChannel(
@@ -156,7 +146,7 @@ class ONTunnelVpnService : VpnService() {
         return NotificationCompat.Builder(this, channel)
             .setSmallIcon(R.drawable.ic_stat_vpn)
             .setContentTitle("ON Tunnel")
-            .setContentText(status)
+            .setContentText("VPN connection is active")
             .setOngoing(true)
             .build()
     }
@@ -166,7 +156,6 @@ class ONTunnelVpnService : VpnService() {
         const val ACTION_STOP = "com.ontunnel.app.STOP"
         const val ACTION_STATE = "com.ontunnel.app.STATE"
         const val EXTRA_CONFIG = "config"
-        const val EXTRA_PROTOCOL = "protocol"
         const val EXTRA_STATE = "state"
         const val EXTRA_ERROR = "error"
         const val NOTIFICATION_ID = 7001
