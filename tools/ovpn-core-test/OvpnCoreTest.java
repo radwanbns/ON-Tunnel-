@@ -106,6 +106,7 @@ public class OvpnCoreTest {
         final List<String> errs = Collections.synchronizedList(new ArrayList<String>());
         TransportProxy p = new TransportProxy(c, InetAddress.getByName("127.0.0.1"), errs::add);
         int port = p.start();
+        p.prepare(); // deferred HTTP PAYLOAD preflight must not open a throwaway upstream socket
         check("payload relay echo", roundTrip(port, "\u0001hello openvpn".getBytes(), 14).equals("\u0001HELLO OPENVPN"));
         check("payload header sent w/ host tag", seen[0].contains("Host: vpn.example.com") && seen[0].contains("Upgrade: websocket"));
         byte[] big = new byte[200000]; Arrays.fill(big, (byte) 'a'); big[0] = 1;
