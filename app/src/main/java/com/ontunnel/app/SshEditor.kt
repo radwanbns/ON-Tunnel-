@@ -89,8 +89,8 @@ internal fun SshEditorScreen(
             }
 
             if (p.isDnstt) {
-                SshHint("SSH-DNSTT tunnels SSH through DNS queries and needs the DNSTT client core, which is not bundled in this build yet. You can already store the details; connecting will report that the core is missing.", Amber)
-                Field("DNS server (resolver IP or DoH/DoT URL)", p.dnsServer, { p = p.copy(dnsServer = it) })
+                SshHint("DNSTT is now started as the transport for SSH. Enter a UDP DNS resolver (IP or hostname, optionally :port), the tunnel NS domain, and the server public key.", Accent)
+                Field("DNS resolver (UDP / IP or hostname)", p.dnsServer, { p = p.copy(dnsServer = it) })
                 Field("Tunnel domain (NS)", p.dnsDomain, { p = p.copy(dnsDomain = it) })
                 OutlinedTextField(
                     value = p.dnsKey, onValueChange = { p = p.copy(dnsKey = it) },
@@ -100,11 +100,15 @@ internal fun SshEditorScreen(
                 )
             }
 
-            SshSection("SSH server")
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box(Modifier.weight(1f)) { Field("SSH host", p.host, { p = p.copy(host = it) }) }
-                Box(Modifier.width(100.dp)) {
-                    Field("Port", portText, { portText = it.filter(Char::isDigit).take(5) }, KeyboardType.Number)
+            if (p.isDnstt) {
+                SshHint("The SSH destination host and port are configured on the DNSTT server. This app connects to the local DNSTT client endpoint.", TextMuted)
+            } else {
+                SshSection("SSH server")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Box(Modifier.weight(1f)) { Field("SSH host", p.host, { p = p.copy(host = it) }) }
+                    Box(Modifier.width(100.dp)) {
+                        Field("Port", portText, { portText = it.filter(Char::isDigit).take(5) }, KeyboardType.Number)
+                    }
                 }
             }
 
