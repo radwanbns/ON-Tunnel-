@@ -102,6 +102,7 @@ public class OvpnCoreTest {
         c.mode = TransportConfig.MODE_PAYLOAD; c.dialHost = "127.0.0.1"; c.dialPort = srv.getLocalPort();
         c.targetHost = "vpn.example.com"; c.targetPort = 1194;
         c.payload = "GET / HTTP/1.1[crlf]Host: [host][crlf]Upgrade: websocket[crlf][crlf]";
+        c.deferPreflight = true; // exercise HTTP PAYLOAD without a disposable preflight request
         final List<String> errs = Collections.synchronizedList(new ArrayList<String>());
         TransportProxy p = new TransportProxy(c, InetAddress.getByName("127.0.0.1"), errs::add);
         int port = p.start();
