@@ -64,7 +64,7 @@ android {
     buildTypes {
         debug {
             signingConfig = signingConfigs.getByName("stableDebug")
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -126,7 +126,6 @@ tasks.register("printDebugSha256") {
 }
 
 dependencies {
-    implementation("com.github.mwiede:jsch:0.2.20")
     implementation(files("libs/libv2ray.aar"))
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
@@ -137,5 +136,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
+    // SSH client (maintained JSch fork) for the SSH tunnel types
+    implementation("com.github.mwiede:jsch:0.2.20")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
