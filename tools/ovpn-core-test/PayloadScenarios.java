@@ -105,8 +105,13 @@ public class PayloadScenarios {
                     && log.get(0).startsWith("GET /cdn-cgi/trace") && log.get(1).startsWith("ACL /"));
             String got;
             try { got = roundTrip(port, "first-attempt", 14); } catch (Exception e) { got = "<" + e.getClass().getSimpleName() + ">"; }
-            check("first OpenVPN connection gets a fresh payload session after preflight",
-                    rawEquals(got, "FIRST-ATTEMPT") && log.size() == 4
+            check("first OpenVPN connection reuses the prepared payload session (no second handshake)",
+                    rawEquals(got, "FIRST-ATTEMPT") && log.size() == 2);
+            // a second OpenVPN connection (e.g. after a reset) must get its own fresh payload session
+            String got2;
+            try { got2 = roundTrip(port, "second-attempt", 15); } catch (Exception e) { got2 = "<" + e.getClass().getSimpleName() + ">"; }
+            check("second OpenVPN connection gets a fresh payload session",
+                    rawEquals(got2, "SECOND-ATTEMPT") && log.size() == 4
                     && log.get(2).startsWith("GET /cdn-cgi/trace") && log.get(3).startsWith("ACL /"));
             p.stop();
         }
