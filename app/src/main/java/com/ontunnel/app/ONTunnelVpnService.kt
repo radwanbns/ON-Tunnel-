@@ -71,7 +71,6 @@ class ONTunnelVpnService : VpnService() {
             core!!.startLoop(finalConfig, tun!!.fd.toLong().toInt())
             running = true
             updateNotification("$protocolLabel Connected")
-            if (protocolLabel == "SSH") SshTunnelService.hideNotification(this)
             sendBroadcast(
                 Intent(ACTION_STATE).setPackage(packageName).putExtra(EXTRA_STATE, "connected")
             )
