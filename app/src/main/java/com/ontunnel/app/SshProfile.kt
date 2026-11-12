@@ -63,7 +63,17 @@ data class SshProfile(
     /** Returns an error message, or null when the profile can be used. */
     fun validate(): String? {
         if (name.isBlank()) return "Name is required"
-        if (isDnstt) return "SSH-DNSTT needs the DNSTT core, which is not bundled in this build yet"
+        if (isDnstt) {
+            if (dnsServer.isBlank()) return "DNS resolver is missing"
+            if (dnsServer.startsWith("http://", true) || dnsServer.startsWith("https://", true))
+                return "Use a UDP DNS resolver address (IP or hostname, optionally :port)"
+            if (dnsDomain.isBlank()) return "DNSTT tunnel domain is missing"
+            if (dnsKey.isBlank()) return "DNSTT public key is missing"
+            if (username.isBlank()) return "SSH username is missing"
+            if (usesKey && privateKey.isBlank()) return "Private key is missing"
+            if (!usesKey && password.isEmpty()) return "SSH password is missing"
+            return null
+        }
         if (host.isBlank()) return "SSH server address is missing"
         if (port !in 1..65535) return "Invalid SSH port"
         if (username.isBlank()) return "SSH username is missing"
