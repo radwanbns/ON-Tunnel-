@@ -543,7 +543,7 @@ class MainActivity : ComponentActivity() {
                 return
             } catch (_: ActivityNotFoundException) { }
         }
-        Toast.makeText(this, "Install "OpenVPN for Android" from Google Play or F-Droid", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "Install \"OpenVPN for Android\" from Google Play or F-Droid", Toast.LENGTH_LONG).show()
     }
 
     override fun onDestroy() {
