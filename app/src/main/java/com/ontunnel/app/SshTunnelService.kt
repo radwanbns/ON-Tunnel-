@@ -16,7 +16,6 @@ import com.jcraft.jsch.ChannelDirectTCPIP
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.Session
 import com.ontunnel.app.ovpn.TransportProxy
-import mobile.Mobile
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
@@ -37,7 +36,6 @@ import java.util.concurrent.atomic.AtomicLong
  */
 class SshTunnelService : Service() {
     private var proxy: TransportProxy? = null
-    private var dnsttStop: (() -> Unit)? = null
     private var session: Session? = null
     private var socks: SshSocksServer? = null
     private val main = Handler(Looper.getMainLooper())
@@ -79,32 +77,8 @@ class SshTunnelService : Service() {
 
             var host = profile.host.trim()
             var port = profile.port
-            if (profile.isDnstt) {
-                AppLogs.add(this, "DNSTT: starting DNS tunnel")
-                AppLogs.add(this, "DNSTT: loading native client")
-                val client = Mobile.newClient(
-                    profile.dnsServer.trim(),
-                    profile.dnsDomain.trim(),
-                    profile.dnsKey.trim(),
-                    "127.0.0.1:0"
-                )
-                // Register cleanup before start in case native initialization fails.
-                dnsttStop = { client.stop() }
-                AppLogs.add(this, "DNSTT: native client loaded; starting DNS handshake")
-                client.start()
-                AppLogs.add(this, "DNSTT: DNS handshake completed")
-                val localPort = client.localPort()
-                if (localPort <= 0) {
-                    client.stop()
-                    throw IOException("DNSTT did not open its local TCP listener")
-                }
-                host = "127.0.0.1"
-                require(localPort in 1L..65535L) { "DNSTT returned an invalid local port: $localPort" }
-                port = localPort.toInt()
-                AppLogs.add(this, "DNSTT ready on 127.0.0.1:$localPort; starting SSH")
-            }
             val t = profile.toTransport()
-            if (!profile.isDnstt && t != null) {
+            if (t != null) {
                 val all = InetAddress.getAllByName(t.dialHost)
                 val ordered = all.sortedBy { if (it is Inet4Address) 0 else 1 }.toTypedArray()
                 val p = TransportProxy(t, ordered) { msg -> AppLogs.add(this, "SSH relay: ${msg.take(200)}") }
@@ -164,14 +138,6 @@ class SshTunnelService : Service() {
                 updateNotification("SSH Connected")
                 onReady?.invoke(socksPort)
             }
-        } catch (e: LinkageError) {
-            if (gen != generation) return
-            val msg = "DNSTT/V2Ray native library error: ${e.javaClass.simpleName}: ${e.message ?: "JNI library could not be loaded"}"
-            report {
-                AppLogs.add(this, msg.take(300))
-                updateNotification("SSH connection failed")
-                onFailed?.invoke(msg.take(300))
-            }
         } catch (e: Exception) {
             if (gen != generation) return
             val msg = friendly(e)
@@ -203,8 +169,6 @@ class SshTunnelService : Service() {
         session = null
         try { proxy?.stop() } catch (_: Exception) { }
         proxy = null
-        try { dnsttStop?.invoke() } catch (_: Exception) { }
-        dnsttStop = null
     }
 
     private fun report(block: () -> Unit) { main.post(block) }
