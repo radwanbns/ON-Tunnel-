@@ -16,6 +16,7 @@ import com.jcraft.jsch.ChannelDirectTCPIP
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.Session
 import com.ontunnel.app.ovpn.TransportProxy
+import mobile.Mobile
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
@@ -36,6 +37,7 @@ import java.util.concurrent.atomic.AtomicLong
  */
 class SshTunnelService : Service() {
     private var proxy: TransportProxy? = null
+    private var dnsttStop: (() -> Unit)? = null
     private var session: Session? = null
     private var socks: SshSocksServer? = null
     private val main = Handler(Looper.getMainLooper())
@@ -77,8 +79,27 @@ class SshTunnelService : Service() {
 
             var host = profile.host.trim()
             var port = profile.port
+            if (profile.isDnstt) {
+                AppLogs.add(this, "DNSTT: starting DNS tunnel")
+                val client = Mobile.newClient(
+                    profile.dnsServer.trim(),
+                    profile.dnsDomain.trim(),
+                    profile.dnsKey.trim(),
+                    "127.0.0.1:0"
+                )
+                client.start()
+                val localPort = client.localPort()
+                if (localPort !in 1..65535) {
+                    client.stop()
+                    throw IOException("DNSTT did not open its local TCP listener")
+                }
+                dnsttStop = { client.stop() }
+                host = "127.0.0.1"
+                port = localPort
+                AppLogs.add(this, "DNSTT ready on 127.0.0.1:$localPort; starting SSH")
+            }
             val t = profile.toTransport()
-            if (t != null) {
+            if (!profile.isDnstt && t != null) {
                 val all = InetAddress.getAllByName(t.dialHost)
                 val ordered = all.sortedBy { if (it is Inet4Address) 0 else 1 }.toTypedArray()
                 val p = TransportProxy(t, ordered) { msg -> AppLogs.add(this, "SSH relay: ${msg.take(200)}") }
@@ -169,6 +190,8 @@ class SshTunnelService : Service() {
         session = null
         try { proxy?.stop() } catch (_: Exception) { }
         proxy = null
+        try { dnsttStop?.invoke() } catch (_: Exception) { }
+        dnsttStop = null
     }
 
     private fun report(block: () -> Unit) { main.post(block) }
