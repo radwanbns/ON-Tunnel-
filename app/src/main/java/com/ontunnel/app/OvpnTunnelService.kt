@@ -58,9 +58,13 @@ class OvpnTunnelService : Service() {
             AppLogs.add(this, "OpenVPN relay listening on 127.0.0.1:$port")
             // Complete the upstream TCP/TLS + payload/WebSocket handshake first.
             // OpenVPN is launched only after a ready transport session is waiting in the relay.
-            AppLogs.add(this, "Preparing proxy and payload handshake")
-            p.prepare()
-            AppLogs.add(this, "Proxy and payload handshake completed")
+            if (t.deferPreflight) {
+                AppLogs.add(this, "HTTP proxy CONNECT deferred until OpenVPN opens the relay")
+            } else {
+                AppLogs.add(this, "Preparing proxy and payload handshake")
+                p.prepare()
+                AppLogs.add(this, "Proxy and payload handshake completed")
+            }
 
             val excludeIps = LinkedHashSet<String>()
             fun addResolved(host: String?) {
