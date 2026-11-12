@@ -114,6 +114,43 @@ public class OvpnCoreTest {
         check("payload relay 200KB", bb[0] == 1 && bb[1] == 'A' && bb[199999] == 'A');
         p.stop();
 
+        // ---- HTTP proxy CONNECT: skip the disposable preflight tunnel
+        final int[] proxyConnects = new int[]{0};
+        final ServerSocket proxySrv = new ServerSocket(0, 5, InetAddress.getByName("127.0.0.1"));
+        Thread proxyAccept = new Thread(() -> {
+            try {
+                while (true) {
+                    final Socket ps = proxySrv.accept();
+                    new Thread(() -> {
+                        try {
+                            proxyConnects[0]++;
+                            String request = readHdr(ps.getInputStream());
+                            if (!request.startsWith("CONNECT vpn.example.com:443")) throw new IOException("Expected CONNECT: " + request);
+                            OutputStream out = ps.getOutputStream();
+                            out.write("HTTP/1.1 200 Connection established\\r\\n\\r\\n".getBytes()); out.flush();
+                            byte[] b = new byte[4096]; int n;
+                            while ((n = ps.getInputStream().read(b)) >= 0) {
+                                out.write(new String(b, 0, n).toUpperCase().getBytes()); out.flush();
+                            }
+                        } catch (Exception ignored) { }
+                    }).start();
+                }
+            } catch (Exception ignored) { }
+        });
+        proxyAccept.setDaemon(true); proxyAccept.start();
+        TransportConfig hp = new TransportConfig();
+        hp.mode = TransportConfig.MODE_PAYLOAD; hp.dialHost = "127.0.0.1"; hp.dialPort = proxySrv.getLocalPort();
+        hp.targetHost = "vpn.example.com"; hp.targetPort = 443;
+        hp.payload = "CONNECT [host_port] HTTP/1.1[crlf]Host: [host_port][crlf][crlf]";
+        hp.deferPreflight = true;
+        TransportProxy hproxy = new TransportProxy(hp, InetAddress.getByName("127.0.0.1"), errs::add);
+        int hpPort = hproxy.start();
+        hproxy.prepare();
+        check("HTTP proxy CONNECT uses first real tunnel without disposable preflight",
+                roundTrip(hpPort, "http-proxy".getBytes(), 10).equals("HTTP-PROXY") && proxyConnects[0] == 1);
+        hproxy.stop();
+        try { proxySrv.close(); } catch (Exception ignored) { }
+
         // ---- payload rejected
         final ServerSocket rej = new ServerSocket(0, 5, InetAddress.getByName("127.0.0.1"));
         new Thread(() -> { try { Socket x = rej.accept(); readHdr(x.getInputStream()); x.getOutputStream().write("HTTP/1.1 403 Forbidden\r\n\r\n".getBytes()); x.close(); } catch (Exception e) {} }).start();
