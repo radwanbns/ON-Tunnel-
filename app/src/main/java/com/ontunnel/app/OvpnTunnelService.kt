@@ -59,7 +59,7 @@ class OvpnTunnelService : Service() {
             // Complete the upstream TCP/TLS + payload/WebSocket handshake first.
             // OpenVPN is launched only after a ready transport session is waiting in the relay.
             if (t.deferPreflight) {
-                AppLogs.add(this, "HTTP proxy CONNECT deferred until OpenVPN opens the relay")
+                AppLogs.add(this, "HTTP PAYLOAD handshake deferred until OpenVPN opens the relay")
             } else {
                 AppLogs.add(this, "Preparing proxy and payload handshake")
                 p.prepare()
