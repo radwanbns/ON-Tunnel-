@@ -90,6 +90,12 @@ jobs:
               raise SystemExit("DNSTT source layout changed: LocalPort insertion point not found")
           p.write_text(s.replace(marker, method + marker, 1))
           PY
+          sdkmanager="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$sdkmanager" ]; then
+            sdkmanager="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          fi
+          yes | "$sdkmanager" --licenses || true
+          "$sdkmanager" "ndk;27.2.12479018"
           go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20260112195712-5b9ecdfb8721
           gomobile init
           mkdir -p "$GITHUB_WORKSPACE/app/libs"
