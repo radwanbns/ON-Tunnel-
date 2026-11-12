@@ -338,89 +338,19 @@ jobs:
           echo "Universal APK contains both ARM architectures."
 
           echo "Checking that DNSTT Java binding is inside the final APK..."
-          found=0
-          while IFS= read -r dex; do
-            if unzip -p "$universal" "$dex" | strings | grep -Fq 'Lmobile/Mobile;'; then
-              found=1
-              echo "Found mobile.Mobile in $dex"
-              break
-            fi
-          done < <(unzip -Z1 "$universal" | grep -E '^classes[0-9]*\\.dex
-        shell: bash
-        run: |
-          set -euo pipefail
+          python3 - "$universal" <<'PY'
+          import sys
+          import zipfile
 
-          expected="$(keytool -list -v \
-            -keystore ~/.android/debug.keystore \
-            -storepass android \
-            -alias androiddebugkey |
-            awk -F': ' '/SHA256:/{print $2; exit}' |
-            tr -d ':' | tr '[:lower:]' '[:upper:]')"
-
-          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
-
-          count=0
-
-          for apk in app/build/outputs/apk/debug/*.apk; do
-            [ -f "$apk" ] || continue
-
-            echo "Checking: $apk"
-
-            unzip -t "$apk" >/dev/null
-
-            output="$("$apksigner" verify --print-certs "$apk")"
-            echo "$output"
-
-            actual="$(echo "$output" |
-              awk '/certificate SHA-256 digest:/ {print $NF; exit}' |
-              tr -d ':' | tr '[:lower:]' '[:upper:]')"
-
-            if [ "$actual" != "$expected" ]; then
-              echo "::error::Invalid APK signature."
-              exit 1
-            fi
-
-            count=$((count + 1))
-          done
-
-          test "$count" -gt 0
-          echo "All APK files passed verification."
-
-      - name: Upload APK artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ON-Tunnel-ARM
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-
-      - name: Prepare GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          set -euo pipefail
-          mkdir -p release
-
-          cp app/build/outputs/apk/debug/app-universal-debug.apk \
-             release/ON-Tunnel-Universal.apk
-
-          cp app/build/outputs/apk/debug/app-arm64-v8a-debug.apk \
-             release/ON-Tunnel-arm64-v8a.apk
-
-          cp app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk \
-             release/ON-Tunnel-armeabi-v7a.apk
-
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          name: ON Tunnel ${{ github.ref_name }}
-          generate_release_notes: true
-          files: release/*.apk
-)
-          if [ "$found" -ne 1 ]; then
-            echo "::error::mobile.Mobile is present in the AAR but missing from the final APK DEX files."
-            exit 1
-          fi
+          apk = sys.argv[1]
+          with zipfile.ZipFile(apk, "r") as z:
+              dex_files = [name for name in z.namelist()
+                           if name.startswith("classes") and name.endswith(".dex")]
+              found = any(b"Lmobile/Mobile;" in z.read(name) for name in dex_files)
+          if not found:
+              raise SystemExit("mobile.Mobile is missing from final APK DEX files")
+          print("Verified mobile.Mobile is packaged in the final APK")
+          PY
 
       - name: Verify signatures
         shell: bash
