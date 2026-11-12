@@ -80,6 +80,9 @@ class MainActivity : ComponentActivity() {
     private var ovpnSawProgress = false
     /** "" | "v2ray" | "openvpn" – which engine currently owns the tunnel. */
     private var activeProto = ""
+
+    /** True while an SSH tunnel is being set up / running. Reads the service itself, so a re-created Activity still knows. */
+    private fun sshActive() = activeProto == "ssh" || SshTunnelService.running
     private val mainHandler = Handler(Looper.getMainLooper())
     private val ovpn = OpenVpnController(this) { state, message, level -> onOvpnStatus(state, message, level) }
     /** True from "Connect" until the user (or a fatal error) stops the OpenVPN tunnel. Drives auto-reconnect. */
@@ -121,12 +124,12 @@ class MainActivity : ComponentActivity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (activeProto == "openvpn") return
             when (intent?.getStringExtra(ONTunnelVpnService.EXTRA_STATE)) {
-                "connected" -> { AppLogs.add(this@MainActivity, "${if (activeProto == "ssh") "SSH" else "V2Ray"} tunnel connected"); status = VpnStatus.Connected; statusDetail = null; errorMessage = null }
+                "connected" -> { AppLogs.add(this@MainActivity, "${if (sshActive()) "SSH" else "V2Ray"} tunnel connected"); status = VpnStatus.Connected; statusDetail = null; errorMessage = null }
                 "disconnected" -> {
                     AppLogs.add(this@MainActivity, "Tunnel disconnected")
                     status = VpnStatus.Disconnected
                     statusDetail = null
-                    if (activeProto == "ssh") { clearSshHooks(); SshTunnelService.stop(this@MainActivity) }
+                    if (sshActive()) { clearSshHooks(); SshTunnelService.stop(this@MainActivity) }
                     if (activeProto == "v2ray" || activeProto == "ssh") activeProto = ""
                 }
                 "error" -> {
@@ -134,7 +137,7 @@ class MainActivity : ComponentActivity() {
                     AppLogs.add(this@MainActivity, "V2Ray error: $detail")
                     status = VpnStatus.Disconnected
                     statusDetail = null
-                    if (activeProto == "ssh") { clearSshHooks(); SshTunnelService.stop(this@MainActivity); activeProto = "" }
+                    if (sshActive()) { clearSshHooks(); SshTunnelService.stop(this@MainActivity); activeProto = "" }
                     errorMessage = detail
                 }
             }
@@ -223,7 +226,7 @@ class MainActivity : ComponentActivity() {
         }
         tamperDetected = false
         val savedProto = getSharedPreferences("on_tunnel_core", MODE_PRIVATE).getString("active_proto", "").orEmpty()
-        activeProto = if (ONTunnelVpnService.running) (if (SshTunnelService.running) "ssh" else "v2ray") else savedProto
+        activeProto = if (SshTunnelService.running) "ssh" else if (ONTunnelVpnService.running) "v2ray" else savedProto
         if (activeProto == "openvpn") {
             // The tunnel may still be up in OpenVPN for Android: re-attach to get its current state.
             if (OpenVpnController.isInstalled(this)) {
@@ -291,7 +294,7 @@ class MainActivity : ComponentActivity() {
     private fun connectV2Ray(config: String) {
         if (activeProto == "openvpn") {
             stopOvpn()
-        } else if (activeProto == "ssh") {
+        } else if (sshActive()) {
             clearSshHooks()
             SshTunnelService.stop(this)
         }
@@ -319,7 +322,7 @@ class MainActivity : ComponentActivity() {
             statusDetail = null
             return
         }
-        if (activeProto == "ssh") {
+        if (sshActive()) {
             clearSshHooks()
             SshTunnelService.stop(this)
         }
