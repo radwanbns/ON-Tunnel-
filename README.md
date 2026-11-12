@@ -122,3 +122,14 @@ The source integration is committed, but a successful GitHub Actions build and r
   30 s (stuck in CONNECTRETRY/WAIT), ON Tunnel restarts the engine + relay on its own (up to 8 times, counter shown in the status line). The
   numeric noise in "Retrying connection – -2" is hidden. A user disconnect never triggers a reconnect.
 * New tests: `tools/ovpn-core-test/HttpCustomScenarios.java` (run in CI).
+
+## License
+
+ON Tunnel is free software, released under the **GNU General Public License, version 2** (GPLv2). See [`LICENSE`](LICENSE) for the full text.
+
+You may use, study, modify and redistribute it under the terms of that license. If you distribute a modified version (or an APK built from it),
+you must make the complete corresponding source code available under the same license. This also keeps the project compatible with embedding
+the OpenVPN engine from [ics-openvpn](https://github.com/schwabe/ics-openvpn), which is itself GPLv2.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+or FITNESS FOR A PARTICULAR PURPOSE.
