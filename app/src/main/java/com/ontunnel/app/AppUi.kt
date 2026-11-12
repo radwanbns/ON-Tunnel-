@@ -79,6 +79,7 @@ private fun openTelegram(context: Context) {
 
 private class EditorTarget(val entry: ServerEntry?, val profile: ServerProfile)
 private class OvpnEditorTarget(val entry: ServerEntry?, val profile: OvpnProfile)
+private class SshEditorTarget(val entry: ServerEntry?, val profile: SshProfile)
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Root screen
@@ -118,6 +119,7 @@ internal fun ONTunnelApp(
     var confirmDeleteAll by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<EditorTarget?>(null) }
     var ovpnEditing by remember { mutableStateOf<OvpnEditorTarget?>(null) }
+    var sshEditing by remember { mutableStateOf<SshEditorTarget?>(null) }
     var jsonEditing by remember { mutableStateOf<ServerEntry?>(null) }
 
     var dnsMode by remember { mutableStateOf(store.dnsMode) }
@@ -248,6 +250,11 @@ internal fun ONTunnelApp(
     }
 
     fun openEditor(e: ServerEntry) {
+        if (e.isSsh) {
+            val profile = SshProfile.fromJson(e.config)
+            if (profile != null) sshEditing = SshEditorTarget(e, profile) else message("Invalid SSH profile")
+            return
+        }
         if (e.isOpenVpn) {
             val profile = OvpnProfile.fromJson(e.config)
             if (profile != null) ovpnEditing = OvpnEditorTarget(e, profile) else message("Invalid OpenVPN profile")
@@ -272,7 +279,28 @@ internal fun ONTunnelApp(
         Surface(color = Bg, modifier = Modifier.fillMaxSize()) {
             val v2Target = editing
             val ovTarget = ovpnEditing
-            if (ovTarget != null) {
+            val sshTarget = sshEditing
+            if (sshTarget != null) {
+                BackHandler { sshEditing = null }
+                SshEditorScreen(
+                    title = if (sshTarget.entry == null) "New SSH server" else "Edit SSH server",
+                    initial = sshTarget.profile,
+                    onBack = { sshEditing = null },
+                    onSave = { profile ->
+                        val old = sshTarget.entry
+                        if (old == null) {
+                            val entry = ServerEntry.ssh(profile)
+                            saveServers(servers + entry)
+                            select(entry.id)
+                        } else {
+                            val updated = old.copy(name = profile.name, config = profile.toJson().toString())
+                            saveServers(servers.map { if (it.id == old.id) updated else it })
+                        }
+                        sshEditing = null
+                        Toast.makeText(context, "Server saved", Toast.LENGTH_SHORT).show()
+                    }
+                )
+            } else if (ovTarget != null) {
                 BackHandler { ovpnEditing = null }
                 OvpnEditorScreen(
                     title = if (ovTarget.entry == null) "New OpenVPN server" else "Edit OpenVPN server",
@@ -536,7 +564,9 @@ internal fun ONTunnelApp(
                                                 },
                                                 onEdit = { openEditor(entry) },
                                                 onCopyUri = {
-                                                    if (entry.isOpenVpn) {
+                                                    if (entry.isSsh) {
+                                                        message("SSH servers have no share link")
+                                                    } else if (entry.isOpenVpn) {
                                                         OvpnProfile.fromJson(entry.config)?.let { copyText(".ovpn", it.config) }
                                                     } else if (entry.uri.isNotBlank()) copyText("URI", entry.uri)
                                                     else message("No link stored for this server – use Copy JSON")
@@ -585,6 +615,10 @@ internal fun ONTunnelApp(
                         SheetRow(Icons.Default.VpnKey, "New OpenVPN profile", "Paste a config and set payload / WebSocket") {
                             showAddSheet = false
                             ovpnEditing = OvpnEditorTarget(null, OvpnProfile())
+                        }
+                        SheetRow(Icons.Default.Terminal, "New SSH server", "Direct, proxy, payload, TLS and more") {
+                            showAddSheet = false
+                            sshEditing = SshEditorTarget(null, SshProfile())
                         }
                         SheetRow(Icons.Default.Edit, "Paste link / config", "VLESS, VMess, Trojan, JSON or .ovpn text") {
                             showAddSheet = false
@@ -1001,7 +1035,8 @@ private fun SheetRow(icon: ImageVector, title: String, subtitle: String, onClick
 }
 
 private fun badgeFor(entry: ServerEntry): String =
-    if (entry.isOpenVpn) OvpnProfile.fromJson(entry.config)?.badge() ?: "OpenVPN"
+    if (entry.isSsh) SshProfile.fromJson(entry.config)?.badge() ?: "SSH"
+    else if (entry.isOpenVpn) OvpnProfile.fromJson(entry.config)?.badge() ?: "OpenVPN"
     else v2rayBadge(entry.config)
 
 /** Reads the first outbound of the generated Xray config, e.g. "VLESS · WS · TLS". */
@@ -1087,12 +1122,12 @@ private fun ServerCard(
                             leadingIcon = { Icon(Icons.Default.Edit, null) },
                             onClick = { menu = false; onEdit() }
                         )
-                        DropdownMenuItem(
+                        if (!entry.isSsh) DropdownMenuItem(
                             text = { Text(if (entry.isOpenVpn) "Copy .ovpn" else "Copy link") },
                             leadingIcon = { Icon(Icons.Default.ContentCopy, null) },
                             onClick = { menu = false; onCopyUri() }
                         )
-                        if (!entry.isOpenVpn) {
+                        if (!entry.isOpenVpn && !entry.isSsh) {
                             DropdownMenuItem(
                                 text = { Text("Copy JSON") },
                                 leadingIcon = { Icon(Icons.Default.ContentCopy, null) },

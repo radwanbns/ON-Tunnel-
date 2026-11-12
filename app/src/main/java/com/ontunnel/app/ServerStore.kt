@@ -13,10 +13,11 @@ data class ServerEntry(
     val uri: String = "",
     /** Locked = came from the hidden subscription: details are never shown or editable. */
     val locked: Boolean = false,
-    /** "v2ray" (default, Xray JSON in [config]) or "openvpn" (OvpnProfile JSON in [config]). */
+    /** "v2ray" (default, Xray JSON in [config]) or "openvpn" (OvpnProfile JSON in [config]) or "ssh" (SshProfile JSON in [config]). */
     val type: String = TYPE_V2RAY
 ) {
     val isOpenVpn: Boolean get() = type == TYPE_OPENVPN
+    val isSsh: Boolean get() = type == TYPE_SSH
 
     fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name)
         .put("config", config).put("uri", uri).put("locked", locked).put("type", type)
@@ -37,6 +38,10 @@ data class ServerEntry(
 
         const val TYPE_V2RAY = "v2ray"
         const val TYPE_OPENVPN = "openvpn"
+        const val TYPE_SSH = "ssh"
+
+        fun ssh(profile: SshProfile, id: String = UUID.randomUUID().toString()) =
+            ServerEntry(id = id, name = profile.name, config = profile.toJson().toString(), type = TYPE_SSH)
 
         fun openVpn(profile: OvpnProfile, id: String = UUID.randomUUID().toString()) =
             ServerEntry(id = id, name = profile.name, config = profile.toJson().toString(), type = TYPE_OPENVPN)
