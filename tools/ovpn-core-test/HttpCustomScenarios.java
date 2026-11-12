@@ -147,7 +147,7 @@ public class HttpCustomScenarios {
                 connects.incrementAndGet();
                 String request = hdr(in);
                 if (!request.startsWith("CONNECT vpn.example.com:443")) throw new IOException("Expected CONNECT, got: " + request);
-                out.write("HTTP/1.1 200 Connection established\\r\\nProxy-Agent: test\\r\\n\\r\\n".getBytes()); out.flush();
+                out.write("HTTP/1.1 200 Connection established\r\nProxy-Agent: test\r\n\r\n".getBytes()); out.flush();
                 echoUpper(in, out);
             });
             TransportConfig c = base(proxyServer.getLocalPort(), TransportConfig.MODE_PAYLOAD,
