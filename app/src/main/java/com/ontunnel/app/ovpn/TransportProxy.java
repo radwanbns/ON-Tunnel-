@@ -643,8 +643,7 @@ public final class TransportProxy {
 
         DataInputStream din = new DataInputStream(upIn);
         OutputStream cout = client.getOutputStream();
-        try {
-            while (true) {
+        while (true) {
                 int b0 = din.read();
                 if (b0 < 0) throw new IOException("Upstream server closed the WebSocket relay");
                 int b1 = din.read();
@@ -670,7 +669,6 @@ public final class TransportProxy {
                     cout.flush();
                 }
             }
-        }
     }
     static void writeFrame(OutputStream out, int opcode, byte[] data, int off, int len) throws IOException {
         ByteArrayOutputStream f = new ByteArrayOutputStream(len + 14);
