@@ -246,7 +246,14 @@ jobs:
               for name, data in entries.items():
                   dst.writestr(name, data)
           tmp.replace(aar)
+          # The Android app imports mobile.Mobile directly. Fail the build early
+          # if gomobile did not package that generated Java binding.
+          with zipfile.ZipFile(aar, "r") as check_aar:
+              with zipfile.ZipFile(io.BytesIO(check_aar.read("classes.jar")), "r") as check_jar:
+                  if "mobile/Mobile.class" not in check_jar.namelist():
+                      raise SystemExit("DNSTT AAR is missing mobile/Mobile.class; refusing to build a broken APK")
           print(f"Removed {len(removed)} duplicate gomobile runtime classes from dnstt.aar")
+          print("Verified DNSTT Java binding: mobile/Mobile.class")
           PY
           test -s "$GITHUB_WORKSPACE/app/libs/dnstt.aar"
 
