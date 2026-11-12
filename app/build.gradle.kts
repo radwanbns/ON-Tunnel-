@@ -64,7 +64,11 @@ android {
     buildTypes {
         debug {
             signingConfig = signingConfigs.getByName("stableDebug")
-            isMinifyEnabled = true
+            // Keep gomobile's generated mobile.Mobile entry point intact.
+            // This project ships the debug variant as its installable APK, so
+            // R8 shrinking/repackaging is disabled until DNSTT runtime packaging
+            // is verified on-device.
+            isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
