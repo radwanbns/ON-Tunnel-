@@ -127,7 +127,7 @@ public class OvpnCoreTest {
                             String request = readHdr(ps.getInputStream());
                             if (!request.startsWith("CONNECT vpn.example.com:443")) throw new IOException("Expected CONNECT: " + request);
                             OutputStream out = ps.getOutputStream();
-                            out.write("HTTP/1.1 200 Connection established\\r\\n\\r\\n".getBytes()); out.flush();
+                            out.write("HTTP/1.1 200 Connection established\r\n\r\n".getBytes()); out.flush();
                             byte[] b = new byte[4096]; int n;
                             while ((n = ps.getInputStream().read(b)) >= 0) {
                                 out.write(new String(b, 0, n).toUpperCase().getBytes()); out.flush();
