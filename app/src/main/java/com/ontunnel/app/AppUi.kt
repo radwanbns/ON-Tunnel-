@@ -383,6 +383,11 @@ internal fun ONTunnelApp(
                                                 onClick = { menuOpen = false; showAddSheet = true }
                                             )
                                             DropdownMenuItem(
+                                                text = { Text("Telegram channel") },
+                                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Send, null) },
+                                                onClick = { menuOpen = false; openTelegram(context) }
+                                            )
+                                            DropdownMenuItem(
                                                 text = { Text("Paste link / JSON") },
                                                 leadingIcon = { Icon(Icons.Default.Edit, null) },
                                                 onClick = { menuOpen = false; showPaste = true }
@@ -401,8 +406,8 @@ internal fun ONTunnelApp(
                                     }
                                 },
                                 actions = {
-                                    IconButton(onClick = { openTelegram(context) }) {
-                                        Icon(Icons.AutoMirrored.Filled.Send, "Telegram", tint = Accent)
+                                    IconButton(onClick = { showAddSheet = true }) {
+                                        Icon(Icons.Default.Add, "Add server", tint = Accent)
                                     }
                                 },
                                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -439,7 +444,7 @@ internal fun ONTunnelApp(
                                         Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("Servers", color = TextMain, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                                        Text("Servers", color = TextMain, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                                         Spacer(Modifier.width(8.dp))
                                         Box(
                                             Modifier.clip(RoundedCornerShape(10.dp))
@@ -469,7 +474,7 @@ internal fun ONTunnelApp(
                                                 }
                                             }
                                         },
-                                        shape = RoundedCornerShape(16.dp),
+                                        shape = RoundedCornerShape(13.dp),
                                         colors = OutlinedTextFieldDefaults.colors(
                                             focusedBorderColor = Accent,
                                             unfocusedBorderColor = SurfaceHigh,
@@ -903,10 +908,10 @@ private fun ConnectHero(
     )
 
     Column(
-        Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 10.dp),
+        Modifier.fillMaxWidth().padding(top = 0.dp, bottom = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(Modifier.size(236.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(148.dp), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxSize()) {
                 val maxR = size.minDimension / 2f
                 // static halo
@@ -924,20 +929,20 @@ private fun ConnectHero(
                 }
             }
             Box(
-                Modifier.size(128.dp)
+                Modifier.size(88.dp)
                     .shadow(18.dp, CircleShape, ambientColor = color, spotColor = color)
                     .clip(CircleShape)
                     .background(Brush.linearGradient(listOf(color, color.copy(alpha = 0.72f))))
                     .clickable(enabled = !busyLocked, onClick = onClick),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.PowerSettingsNew, contentDescription = "Connect", tint = OnHero, modifier = Modifier.size(56.dp))
+                Icon(Icons.Default.PowerSettingsNew, contentDescription = "Connect", tint = OnHero, modifier = Modifier.size(38.dp))
             }
             if (status == VpnStatus.Connecting || status == VpnStatus.Disconnecting) {
-                CircularProgressIndicator(Modifier.size(150.dp), color = color, strokeWidth = 3.dp)
+                CircularProgressIndicator(Modifier.size(104.dp), color = color, strokeWidth = 2.5.dp)
             }
         }
-        Text(label, color = color, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+        Text(label, color = color, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(2.dp))
         val sub = when {
             status == VpnStatus.Connected -> formatElapsed(elapsed)
@@ -945,19 +950,19 @@ private fun ConnectHero(
             status == VpnStatus.Disconnected -> "Tap the button to connect"
             else -> ""
         }
-        Text(sub, color = TextMuted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(10.dp))
+        Text(sub, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(6.dp))
         Row(
-            Modifier.clip(RoundedCornerShape(24.dp)).background(SurfaceC)
-                .padding(horizontal = 14.dp, vertical = 8.dp),
+            Modifier.clip(RoundedCornerShape(20.dp)).background(SurfaceC)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.Public, null, tint = Accent, modifier = Modifier.size(16.dp))
+            Icon(Icons.Default.Public, null, tint = Accent, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(8.dp))
             Text(
                 serverName ?: "No server selected",
-                color = TextMain, fontSize = 14.sp, fontWeight = FontWeight.Medium,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp)
+                color = TextMain, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 180.dp)
             )
             if (serverBadge != null) {
                 Spacer(Modifier.width(8.dp))
