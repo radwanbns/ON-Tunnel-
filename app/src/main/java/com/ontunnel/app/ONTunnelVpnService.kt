@@ -146,7 +146,7 @@ class ONTunnelVpnService : VpnService() {
         return NotificationCompat.Builder(this, channel)
             .setSmallIcon(R.drawable.ic_stat_vpn)
             .setContentTitle("ON Tunnel")
-            .setContentText("Connected")
+            .setContentText("VPN connection is active")
             .setOngoing(true)
             .build()
     }
