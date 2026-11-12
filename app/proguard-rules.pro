@@ -28,6 +28,8 @@
 # ── Native / JNI bridge – must keep exact names & members ───────────────
 -keep class libv2ray.** { *; }
 -keep class go.** { *; }
+# DNSTT gomobile API is referenced by the SSH service and must retain its package/name.
+-keep class mobile.** { *; }
 -dontwarn libv2ray.**
 -dontwarn go.**
 -keep class com.ontunnel.app.NativeIntegrity { *; }
