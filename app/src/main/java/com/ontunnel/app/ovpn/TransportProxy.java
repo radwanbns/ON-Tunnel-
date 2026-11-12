@@ -20,6 +20,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import javax.net.ssl.SNIHostName;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
@@ -44,6 +45,16 @@ public final class TransportProxy {
     private ServerSocket server;
     private volatile boolean running;
     private final Set<Socket> open = Collections.synchronizedSet(new HashSet<Socket>());
+    /** A fully handshaked upstream session prepared BEFORE OpenVPN starts; handed to OpenVPN's first connection. */
+    private Session warm;
+    private long warmAt;
+    private static final long WARM_MAX_AGE_MS = 25_000L;
+    /** Bytes relayed (download = server -> OpenVPN, upload = OpenVPN -> server), for the notification. */
+    private final AtomicLong rxBytes = new AtomicLong();
+    private final AtomicLong txBytes = new AtomicLong();
+
+    public long rxBytes() { return rxBytes.get(); }
+    public long txBytes() { return txBytes.get(); }
 
     public TransportProxy(TransportConfig cfg, InetAddress dialAddr, Listener listener) {
         this(cfg, new InetAddress[]{dialAddr}, listener);
@@ -78,35 +89,49 @@ public final class TransportProxy {
         synchronized (this) {
             if (!running) throw new IOException("Relay is not running");
         }
-        // A proxy CONNECT used only as a preflight is immediately closed before OpenVPN starts.
-        // Some HTTP proxies rate-limit or invalidate that disposable tunnel, so defer the real
-        // CONNECT until OpenVPN opens the local relay socket.
-        if (cfg.deferPreflight) return;
         IOException lastErr = null;
         int attempts = Math.max(1, cfg.attempts);
         for (int i = 0; i < attempts && running; i++) {
-            Session ready = null;
             try {
-                ready = connectAndHandshake();
-                if (!running) throw new IOException("Relay stopped during transport preparation");
+                Session ready = connectAndHandshake();
+                if (!running) { closeQuietly(ready.up); open.remove(ready.up); throw new IOException("Relay stopped during transport preparation"); }
+                // Keep the ready session: OpenVPN's first connection takes it over, so the first
+                // attempt already finds a working tunnel instead of waiting for a handshake (which
+                // made OpenVPN time out / reset and print "connection retry").
+                synchronized (this) {
+                    if (warm != null) { closeQuietly(warm.up); open.remove(warm.up); }
+                    warm = ready;
+                    warmAt = System.currentTimeMillis();
+                }
                 return;
             } catch (IOException e) {
                 lastErr = e;
-                if (e instanceof Rejected && ((Rejected) e).permanent) break;
-                if (i + 1 < attempts && !pause(500L * (i + 1))) break;
-            } finally {
-                if (ready != null) {
-                    closeQuietly(ready.up);
-                    open.remove(ready.up);
-                }
+                if (e instanceof Rejected && ((Rejected) e).permanent && i >= 1) break;
+                if (i + 1 < attempts && !pause(400L * (i + 1))) break;
             }
         }
         throw lastErr != null ? lastErr : new IOException("Transport preparation failed");
     }
 
+    /** Takes the prepared session if it is still fresh and its socket is alive; otherwise null. */
+    private Session takeWarm() {
+        Session w;
+        long at;
+        synchronized (this) { w = warm; at = warmAt; warm = null; }
+        if (w == null) return null;
+        boolean alive = System.currentTimeMillis() - at <= WARM_MAX_AGE_MS
+                && !w.up.isClosed() && !w.up.isInputShutdown() && !w.up.isOutputShutdown();
+        if (alive) {
+            try { if (w.upIn.available() < 0) alive = false; } catch (IOException e) { alive = false; }
+        }
+        if (!alive) { closeQuietly(w.up); open.remove(w.up); return null; }
+        return w;
+    }
+
     public void stop() {
         running = false;
         try { if (server != null) server.close(); } catch (IOException ignored) { }
+        synchronized (this) { if (warm != null) { closeQuietly(warm.up); warm = null; } }
         synchronized (open) {
             for (Socket s : open) closeQuietly(s);
             open.clear();
@@ -157,16 +182,17 @@ public final class TransportProxy {
             // This avoids reusing a preflight socket that may have gone idle during Android
             // VPN route installation and been reset by the gateway.
             IOException lastErr = null;
-            int attempts = Math.max(1, cfg.attempts);
-            for (int i = 0; i < attempts && running; i++) {
+            int attempts = Math.max(2, cfg.attempts);
+            s = takeWarm();
+            for (int i = 0; s == null && i < attempts && running; i++) {
                 try {
                     s = connectAndHandshake();
                     lastErr = null;
                     break;
                 } catch (IOException e) {
                     lastErr = e;
-                    if (e instanceof Rejected && ((Rejected) e).permanent) break;
-                    if (i + 1 < attempts && !pause(500L * (i + 1))) break;
+                    if (e instanceof Rejected && ((Rejected) e).permanent && i >= 1) break;
+                    if (i + 1 < attempts && !pause(300L * (i + 1))) break;
                 }
             }
             if (s == null) throw lastErr != null ? lastErr : new IOException("Relay stopped");
@@ -578,13 +604,13 @@ public final class TransportProxy {
     private void relayRaw(final Socket client, final InputStream upIn, final OutputStream upOut, final Socket up) throws IOException {
         Thread c2u = new Thread(new Runnable() {
             @Override public void run() {
-                try { pump(client.getInputStream(), upOut); } catch (IOException ignored) { }
+                try { pump(client.getInputStream(), upOut, txBytes); } catch (IOException ignored) { }
                 finally { shutdownOutputQuietly(up); }
             }
         }, "ovpn-relay-c2u");
         c2u.setDaemon(true);
         c2u.start();
-        pumpOpenVpnDown(upIn, client.getOutputStream());
+        pumpOpenVpnDown(upIn, client.getOutputStream(), rxBytes);
         if (running) throw new IOException("Upstream server closed the raw TCP relay");
     }
 
@@ -594,7 +620,7 @@ public final class TransportProxy {
      * OpenVPN TCP packets start with a small binary length prefix, so discard only the
      * leading printable ASCII/CRLF bytes and then relay the stream byte-for-byte.
      */
-    private static void pumpOpenVpnDown(InputStream in, OutputStream out) throws IOException {
+    private static void pumpOpenVpnDown(InputStream in, OutputStream out, AtomicLong counter) throws IOException {
         byte[] buf = new byte[16 * 1024];
         boolean leading = true;
         int n;
@@ -608,6 +634,7 @@ public final class TransportProxy {
             if (off < n) {
                 out.write(buf, off, n - off);
                 out.flush();
+                counter.addAndGet(n - off);
             }
         }
     }
@@ -617,12 +644,13 @@ public final class TransportProxy {
         return (b >= 0x20 && b <= 0x7e) || b == 0x0d || b == 0x0a;
     }
 
-    private static void pump(InputStream in, OutputStream out) throws IOException {
+    private static void pump(InputStream in, OutputStream out, AtomicLong counter) throws IOException {
         byte[] buf = new byte[16 * 1024];
         int n;
         while ((n = in.read(buf)) >= 0) {
             out.write(buf, 0, n);
             out.flush();
+            counter.addAndGet(n);
         }
     }
 
@@ -637,6 +665,7 @@ public final class TransportProxy {
                     while ((n = cin.read(buf)) >= 0) {
                         if (n == 0) continue;
                         synchronized (writeLock) { writeFrame(upOut, 0x2, buf, 0, n); }
+                        txBytes.addAndGet(n);
                     }
                 } catch (IOException ignored) {
                 } finally { shutdownOutputQuietly(up); }
@@ -671,6 +700,7 @@ public final class TransportProxy {
                 } else {                                      // 0 continuation, 1 text, 2 binary
                     cout.write(data);
                     cout.flush();
+                    rxBytes.addAndGet(data.length);
                 }
             }
     }
