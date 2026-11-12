@@ -929,7 +929,7 @@ private fun ConnectHero(
     )
 
     Column(
-        Modifier.fillMaxWidth().padding(top = 0.dp, bottom = 2.dp),
+        Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(Modifier.size(236.dp), contentAlignment = Alignment.Center) {
@@ -960,7 +960,7 @@ private fun ConnectHero(
                 Icon(Icons.Default.PowerSettingsNew, contentDescription = "Connect", tint = OnHero, modifier = Modifier.size(56.dp))
             }
             if (status == VpnStatus.Connecting || status == VpnStatus.Disconnecting) {
-                CircularProgressIndicator(Modifier.size(150.dp), color = color, strokeWidth = 2.5.dp)
+                CircularProgressIndicator(Modifier.size(150.dp), color = color, strokeWidth = 3.dp)
             }
         }
         Text(label, color = color, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
@@ -971,19 +971,19 @@ private fun ConnectHero(
             status == VpnStatus.Disconnected -> "Tap the button to connect"
             else -> ""
         }
-        Text(sub, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(6.dp))
+        Text(sub, color = TextMuted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(10.dp))
         Row(
-            Modifier.clip(RoundedCornerShape(20.dp)).background(SurfaceC)
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+            Modifier.clip(RoundedCornerShape(24.dp)).background(SurfaceC)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.Public, null, tint = Accent, modifier = Modifier.size(14.dp))
+            Icon(Icons.Default.Public, null, tint = Accent, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
             Text(
                 serverName ?: "No server selected",
-                color = TextMain, fontSize = 12.sp, fontWeight = FontWeight.Medium,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 180.dp)
+                color = TextMain, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp)
             )
             if (serverBadge != null) {
                 Spacer(Modifier.width(8.dp))
