@@ -123,25 +123,17 @@ class SshTunnelService : Service() {
                 }
                 if (gen == generation && running) {
                     AppLogs.add(this, "SSH session closed")
-                    report {
-                        updateNotification("SSH connection lost")
-                        onDropped?.invoke("SSH connection lost")
-                    }
+                    report { onDropped?.invoke("SSH connection lost") }
                 }
             }.also { it.isDaemon = true }.start()
 
             report {
-                updateNotification("SSH Connected")
                 onReady?.invoke(socksPort)
             }
         } catch (e: Exception) {
             if (gen != generation) return
             val msg = friendly(e)
-            report {
-                AppLogs.add(this, "SSH error: $msg")
-                updateNotification("SSH connection failed")
-                onFailed?.invoke(msg)
-            }
+            report { AppLogs.add(this, "SSH error: $msg"); onFailed?.invoke(msg) }
         }
     }
 
@@ -176,15 +168,7 @@ class SshTunnelService : Service() {
         super.onDestroy()
     }
 
-    private fun updateNotification(status: String) {
-        try {
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.notify(NOTIFICATION_ID, notification(status))
-        } catch (_: Exception) {
-        }
-    }
-
-    private fun notification(status: String = "Connecting"): Notification {
+    private fun notification(): Notification {
         val channel = "on_tunnel_ssh"
         if (Build.VERSION.SDK_INT >= 26) {
             getSystemService(NotificationManager::class.java).createNotificationChannel(
@@ -194,10 +178,11 @@ class SshTunnelService : Service() {
         return NotificationCompat.Builder(this, channel)
             .setSmallIcon(R.drawable.ic_stat_vpn)
             .setContentTitle("ON Tunnel")
-            .setContentText(status)
+            .setContentText("SSH tunnel is running")
             .setOngoing(true)
             .build()
     }
+
     companion object {
         const val ACTION_START = "com.ontunnel.app.SSH_START"
         const val EXTRA_PROFILE = "profile"
