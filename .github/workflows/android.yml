@@ -54,6 +54,48 @@ jobs:
               -dname "CN=ON Tunnel Debug,O=ON Tunnel,C=US"
           fi
 
+      - name: Set up Go for DNSTT core
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+
+      - name: Build DNSTT Android library (ARMv7 + ARM64)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v2.2.0 https://github.com/dnstt-xyz/dnstt_xyz_app.git /tmp/dnstt-upstream
+          cd /tmp/dnstt-upstream/go_src
+          # Expose the dynamically assigned local listener port to the Android SSH bridge.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("mobile/mobile.go")
+          s = p.read_text()
+          marker = "// IsRunning returns whether the client is running"
+          method = """// LocalPort returns the TCP port used by the local tunnel listener.
+          func (c *DnsttClient) LocalPort() int {
+          	c.mu.Lock()
+          	defer c.mu.Unlock()
+          	if c.listener == nil {
+          		return 0
+          	}
+          	addr, ok := c.listener.Addr().(*net.TCPAddr)
+          	if !ok {
+          		return 0
+          	}
+          	return addr.Port
+          }
+
+          """
+          if marker not in s:
+              raise SystemExit("DNSTT source layout changed: LocalPort insertion point not found")
+          p.write_text(s.replace(marker, method + marker, 1))
+          PY
+          go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20260112195712-5b9ecdfb8721
+          gomobile init
+          mkdir -p "$GITHUB_WORKSPACE/app/libs"
+          GOFLAGS="-trimpath" gomobile bind -v -androidapi 24 -target=android/arm,android/arm64 -ldflags="-s -w" -o "$GITHUB_WORKSPACE/app/libs/dnstt.aar" ./mobile
+          test -s "$GITHUB_WORKSPACE/app/libs/dnstt.aar"
+
       - name: Download Xray core
         run: |
           mkdir -p app/libs
