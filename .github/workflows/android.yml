@@ -214,6 +214,39 @@ jobs:
           gomobile init
           mkdir -p "$GITHUB_WORKSPACE/app/libs"
           GOFLAGS="-trimpath" gomobile bind -v -androidapi 24 -target=android/arm,android/arm64 -ldflags="-s -w" -o "$GITHUB_WORKSPACE/app/libs/dnstt.aar" ./mobile
+
+          # libv2ray.aar already packages gomobile's shared go.Seq runtime.
+          # Keep DNSTT's generated mobile bindings, but remove the duplicate
+          # runtime classes so D8 resolves them from libv2ray.aar only.
+          python3 - <<'PY'
+          import io
+          import zipfile
+          from pathlib import Path
+
+          aar = Path("$GITHUB_WORKSPACE/app/libs/dnstt.aar")
+          with zipfile.ZipFile(aar, "r") as src:
+              entries = {name: src.read(name) for name in src.namelist()}
+          if "classes.jar" not in entries:
+              raise SystemExit("DNSTT AAR has no classes.jar")
+          jar_bytes = entries["classes.jar"]
+          out = io.BytesIO()
+          removed = []
+          with zipfile.ZipFile(io.BytesIO(jar_bytes), "r") as jar, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+              for item in jar.infolist():
+                  if item.filename.startswith("go/"):
+                      removed.append(item.filename)
+                      continue
+                  dst.writestr(item, jar.read(item.filename))
+          if not removed:
+              raise SystemExit("Expected gomobile go/* runtime classes in DNSTT classes.jar; refusing silent packaging")
+          entries["classes.jar"] = out.getvalue()
+          tmp = aar.with_suffix(".aar.tmp")
+          with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as dst:
+              for name, data in entries.items():
+                  dst.writestr(name, data)
+          tmp.replace(aar)
+          print(f"Removed {len(removed)} duplicate gomobile runtime classes from dnstt.aar")
+          PY
           test -s "$GITHUB_WORKSPACE/app/libs/dnstt.aar"
 
       - name: Download Xray core
