@@ -41,4 +41,6 @@ public final class TransportConfig {
      * gives up and closes it (OpenVPN then sees a reset). Keeps short server hiccups invisible to OpenVPN.
      */
     public int attempts = 3;
+    /** Skip the disposable preflight CONNECT for HTTP proxies; open the real tunnel only when OpenVPN connects. */
+    public boolean deferPreflight = false;
 }
