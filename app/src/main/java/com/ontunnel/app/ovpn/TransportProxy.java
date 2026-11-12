@@ -78,6 +78,10 @@ public final class TransportProxy {
         synchronized (this) {
             if (!running) throw new IOException("Relay is not running");
         }
+        // A proxy CONNECT used only as a preflight is immediately closed before OpenVPN starts.
+        // Some HTTP proxies rate-limit or invalidate that disposable tunnel, so defer the real
+        // CONNECT until OpenVPN opens the local relay socket.
+        if (cfg.deferPreflight) return;
         IOException lastErr = null;
         int attempts = Math.max(1, cfg.attempts);
         for (int i = 0; i < attempts && running; i++) {
