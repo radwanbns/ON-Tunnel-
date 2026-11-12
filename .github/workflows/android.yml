@@ -223,7 +223,8 @@ jobs:
           import zipfile
           from pathlib import Path
 
-          aar = Path("$GITHUB_WORKSPACE/app/libs/dnstt.aar")
+          import os
+          aar = Path(os.environ["GITHUB_WORKSPACE"]) / "app/libs/dnstt.aar"
           with zipfile.ZipFile(aar, "r") as src:
               entries = {name: src.read(name) for name in src.namelist()}
           if "classes.jar" not in entries:
