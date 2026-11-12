@@ -127,7 +127,8 @@ data class OvpnProfile(
         t.tls = tls
         t.sni = sni.trim()
         t.allowInsecure = allowInsecure
-        t.deferPreflight = proxyHost.isNotBlank() && mode == OvpnMode.PAYLOAD
+        // HTTP PAYLOAD must be sent only on the real OpenVPN stream, not on a disposable preflight socket.
+        t.deferPreflight = mode == OvpnMode.PAYLOAD
         t.payload = payload
         t.wsPath = wsPath
         t.wsHost = wsHost.trim()
