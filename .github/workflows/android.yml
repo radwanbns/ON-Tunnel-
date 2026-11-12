@@ -114,6 +114,7 @@ jobs:
            mu sync.Mutex
            closed bool
            results chan []byte
+          done chan struct{}
            mode, endpoint, serverName string
            client *http.Client
            dialer net.Dialer
@@ -134,7 +135,7 @@ jobs:
             u,e:=url.Parse(resolver); if e!=nil||u.Host==""||u.Path==""||u.Path=="/"{return nil,nil,fmt.Errorf("invalid DoH URL; include /dns-query")}
             d:=makeProtectedDialer(protect)
             tr:=&http.Transport{Proxy:nil,DialContext:d.DialContext,TLSClientConfig:&tls.Config{MinVersion:tls.VersionTLS12},ForceAttemptHTTP2:true}
-            c:=&resolverPacketConn{mode:"doh",endpoint:u.String(),results:make(chan []byte,32),dialer:d,client:&http.Client{Transport:tr,Timeout:12*time.Second}}
+            c:=&resolverPacketConn{mode:"doh",endpoint:u.String(),results:make(chan []byte,32),done:make(chan struct{}),dialer:d,client:&http.Client{Transport:tr,Timeout:12*time.Second}}
             return c,resolverAddr(u.Host),nil
            }
            if strings.HasPrefix(strings.ToLower(resolver),"tls://")||strings.HasPrefix(strings.ToLower(resolver),"dot://"){
@@ -144,7 +145,7 @@ jobs:
             if host==""{return nil,nil,fmt.Errorf("DoT hostname missing")}
             if _,e=strconv.Atoi(port);e!=nil{return nil,nil,fmt.Errorf("invalid DoT port")}
             d:=makeProtectedDialer(protect)
-            c:=&resolverPacketConn{mode:"dot",endpoint:net.JoinHostPort(host,port),serverName:host,results:make(chan []byte,32),dialer:d}
+            c:=&resolverPacketConn{mode:"dot",endpoint:net.JoinHostPort(host,port),serverName:host,results:make(chan []byte,32),done:make(chan struct{}),dialer:d}
             return c,resolverAddr(c.endpoint),nil
            }
            addr:=resolver
@@ -174,19 +175,19 @@ jobs:
             if _,e=io.ReadFull(conn,h[:]);e!=nil{return 0,e};answer=make([]byte,int(binary.BigEndian.Uint16(h[:])))
             if _,e=io.ReadFull(conn,answer);e!=nil{return 0,e}
            }
-           select{case c.results<-answer:return len(p),nil;case <-ctx.Done():return 0,ctx.Err()}
+           select{case c.results<-answer:return len(p),nil;case <-c.done:return 0,net.ErrClosed;case <-ctx.Done():return 0,ctx.Err()}
           }
           func(c *resolverPacketConn) ReadFrom(p []byte)(int,net.Addr,error){
            c.mu.Lock();closed:=c.closed;deadline:=c.deadline;c.mu.Unlock();if closed{return 0,nil,net.ErrClosed}
-           if deadline.IsZero(){b,ok:=<-c.results;if !ok{return 0,nil,net.ErrClosed};return copy(p,b),resolverAddr(c.endpoint),nil}
+           if deadline.IsZero(){select{case b:=<-c.results:return copy(p,b),resolverAddr(c.endpoint),nil;case <-c.done:return 0,nil,net.ErrClosed}}
            d:=time.Until(deadline);if d<=0{return 0,nil,timeoutError{}}
-           t:=time.NewTimer(d);defer t.Stop();select{case b:=<-c.results:return copy(p,b),resolverAddr(c.endpoint),nil;case <-t.C:return 0,nil,timeoutError{}}
+           t:=time.NewTimer(d);defer t.Stop();select{case b:=<-c.results:return copy(p,b),resolverAddr(c.endpoint),nil;case <-c.done:return 0,nil,net.ErrClosed;case <-t.C:return 0,nil,timeoutError{}}
           }
           type timeoutError struct{}
           func(timeoutError)Error()string{return "i/o timeout"}
           func(timeoutError)Timeout()bool{return true}
           func(timeoutError)Temporary()bool{return true}
-          func(c *resolverPacketConn)Close()error{c.mu.Lock();defer c.mu.Unlock();c.closed=true;if c.client!=nil{c.client.CloseIdleConnections()};return nil}
+          func(c *resolverPacketConn)Close()error{c.mu.Lock();defer c.mu.Unlock();c.closed=true;close(c.done);if c.client!=nil{c.client.CloseIdleConnections()};return nil}
           func(c *resolverPacketConn)LocalAddr()net.Addr{return resolverAddr("local-dns")}
           func(c *resolverPacketConn)SetDeadline(t time.Time)error{c.mu.Lock();c.deadline=t;c.mu.Unlock();return nil}
           func(c *resolverPacketConn)SetReadDeadline(t time.Time)error{return c.SetDeadline(t)}
@@ -195,59 +196,12 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           p=Path("mobile/mobile.go"); s=p.read_text()
-          old="""\t// Resolve DNS server address
-          \tdnsAddr := c.dnsAddr
-          \tif _, _, err := net.SplitHostPort(dnsAddr); err != nil {
-          \t\tdnsAddr = net.JoinHostPort(dnsAddr, "53")
-          \t}
-          \tremoteAddr, err := net.ResolveUDPAddr("udp", dnsAddr)
-          \tif err != nil {
-          \t\treturn fmt.Errorf("failed to resolve DNS server: %v", err)
-          \t}
+          import re
+          pattern = re.compile(r"\t// Resolve DNS server address.*?\n\tc\.conn = pconn", re.S)
+          replacement = "\t// Select native UDP, DNS-over-HTTPS, or DNS-over-TLS.\n\tpconn, remoteAddr, err := newResolverPacketConn(c.dnsAddr, c.protectSocket)\n\tif err != nil { return err }\n\tc.conn = pconn"
+          s, count = pattern.subn(lambda _: replacement, s, count=1)
+          if count != 1: raise SystemExit("Could not replace upstream UDP resolver block; refusing build patch")
 
-          \t// Create UDP connection - bind to 0.0.0.0 (IPv4 only) to avoid IPv6 routing issues
-          \tlocalAddr := &net.UDPAddr{
-          \t\tIP:   net.IPv4zero,
-          \t\tPort: 0,
-          \t}
-          \tpconn, err := net.ListenUDP("udp4", localAddr)
-          \tif err != nil {
-          \t\treturn fmt.Errorf("failed to create UDP socket: %v", err)
-          \t}
-
-          \t// Protect the socket from VPN routing if callback is set
-          \tif c.protectSocket != nil {
-          \t\trawConn, err := pconn.SyscallConn()
-          \t\tif err != nil {
-          \t\t\tpconn.Close()
-          \t\t\treturn fmt.Errorf("failed to get socket control: %v", err)
-          \t\t}
-
-          \t\tvar protectErr error
-          \t\terr = rawConn.Control(func(fd uintptr) {
-          \t\t\tif !c.protectSocket(int(fd)) {
-          \t\t\t\tprotectErr = fmt.Errorf("failed to protect socket")
-          \t\t\t} else {
-          \t\t\t\tlog.Printf("UDP socket protected from VPN routing (fd=%d)", fd)
-          \t\t\t}
-          \t\t})
-          \t\tif err != nil {
-          \t\t\tpconn.Close()
-          \t\t\treturn fmt.Errorf("failed to control socket: %v", err)
-          \t\t}
-          \t\tif protectErr != nil {
-          \t\t\tpconn.Close()
-          \t\t\treturn protectErr
-          \t\t}
-          \t}
-
-          \tc.conn = pconn"""
-          new="""\t// Select native UDP, DNS-over-HTTPS, or DNS-over-TLS.
-          \tpconn, remoteAddr, err := newResolverPacketConn(c.dnsAddr, c.protectSocket)
-          \tif err != nil { return err }
-          \tc.conn = pconn"""
-          if old not in s: raise SystemExit("Could not find upstream UDP resolver block; refusing build patch")
-          s=s.replace(old,new,1)
           marker="// IsRunning returns whether the client is running"
           method="""// LocalPort returns the TCP port used by the local tunnel listener.
           func (c *DnsttClient) LocalPort() int {
