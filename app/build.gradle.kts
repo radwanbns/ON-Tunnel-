@@ -79,6 +79,7 @@ android {
 
     packaging {
         jniLibs {
+            pickFirsts += "**/libgojni.so"
             excludes += setOf(
                 "**/lib/x86/**",
                 "**/lib/x86_64/**",
