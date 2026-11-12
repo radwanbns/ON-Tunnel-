@@ -110,7 +110,7 @@ internal fun ONTunnelApp(
     var selectedId by remember { mutableStateOf(store.selectedId) }
     var isUpdating by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
-    var showLogs by remember { mutableStateOf(false) }
+    var currentTab by rememberSaveable { mutableStateOf("HOME") }
     var serverSearch by rememberSaveable { mutableStateOf("") }
     var showAddSheet by remember { mutableStateOf(false) }
     // Shown on EVERY app launch (rememberSaveable only survives rotation, not a new launch)
@@ -312,9 +312,9 @@ internal fun ONTunnelApp(
                         Toast.makeText(context, "Server saved", Toast.LENGTH_SHORT).show()
                     }
                 )
-            } else if (showLogs) {
-                BackHandler { showLogs = false }
-                LogsScreen(onBack = { showLogs = false })
+            } else if (currentTab == "LOGS") {
+                BackHandler { currentTab = "HOME" }
+                LogsScreen(onBack = { currentTab = "HOME" })
             } else {
                 val selected = servers.firstOrNull { it.id == selectedId }
 
@@ -331,10 +331,11 @@ internal fun ONTunnelApp(
                         containerColor = Color.Transparent,
                         snackbarHost = { SnackbarHost(snackbar) },
                         bottomBar = {
-                            HomeLogsBottomBar(
-                                selectedLogs = false,
-                                onHome = { showLogs = false },
-                                onLogs = { showLogs = true }
+                            HomeConfigLogsBottomBar(
+                                selectedTab = currentTab,
+                                onHome = { currentTab = "HOME" },
+                                onConfig = { currentTab = "CONFIG" },
+                                onLogs = { currentTab = "LOGS" }
                             )
                         },
                         topBar = {
@@ -419,160 +420,181 @@ internal fun ONTunnelApp(
                             )
                         }
                     ) { padding ->
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize().padding(padding),
-                            contentPadding = PaddingValues(bottom = 28.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            item(key = "connection_hero") {
-                                ConnectHero(
-                                    status = status,
-                                    detail = statusDetail,
-                                    serverName = selected?.name,
-                                    serverBadge = null,
-                                    busyLocked = status == VpnStatus.Disconnecting,
-                                    onClick = ::toggleConnect
-                                )
-                            }
-
-                            item(key = "servers_header") {
-                                Column(
-                                    Modifier.fillMaxWidth().padding(horizontal = 18.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Row(
-                                        Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("Servers", color = TextMain, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                                        Spacer(Modifier.width(8.dp))
-                                        Box(
-                                            Modifier.clip(RoundedCornerShape(10.dp))
-                                                .background(SurfaceHigh)
-                                                .padding(horizontal = 9.dp, vertical = 3.dp)
-                                        ) {
-                                            Text("${servers.size}", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                        Spacer(Modifier.weight(1f))
-                                        Text(
-                                            if (serverSearch.isBlank()) "Choose a server" else "${servers.count { it.name.contains(serverSearch, true) }} found",
-                                            color = TextMuted,
-                                            fontSize = 11.sp
-                                        )
-                                    }
-                                    OutlinedTextField(
-                                        value = serverSearch,
-                                        onValueChange = { serverSearch = it },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        singleLine = true,
-                                        placeholder = { Text("Search servers…") },
-                                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Accent) },
-                                        trailingIcon = {
-                                            if (serverSearch.isNotEmpty()) {
-                                                IconButton(onClick = { serverSearch = "" }) {
-                                                    Icon(Icons.Default.Close, contentDescription = "Clear search")
-                                                }
-                                            }
-                                        },
-                                        shape = RoundedCornerShape(13.dp),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = Accent,
-                                            unfocusedBorderColor = SurfaceHigh,
-                                            focusedContainerColor = SurfaceC,
-                                            unfocusedContainerColor = SurfaceC
-                                        )
+                        if (currentTab == "HOME") {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize().padding(padding),
+                                contentPadding = PaddingValues(bottom = 28.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                item(key = "connection_hero") {
+                                    ConnectHero(
+                                        status = status,
+                                        detail = statusDetail,
+                                        serverName = selected?.name,
+                                        serverBadge = null,
+                                        busyLocked = status == VpnStatus.Disconnecting,
+                                        onClick = ::toggleConnect
                                     )
                                 }
+                                if (tampered) {
+                                    item(key = "integrity_error") {
+                                        Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                            ErrorCard("App signature does not match the official build – connection disabled for your safety.", {})
+                                        }
+                                    }
+                                }
+                                if (error != null) {
+                                    item(key = "connection_error") {
+                                        Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                            ErrorCard(error, onDismissError)
+                                        }
+                                    }
+                                }
                             }
-
-                            if (tampered) {
-                                item(key = "integrity_error") {
-                                    Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                                        ErrorCard(
-                                            "App signature does not match the official build – connection disabled for your safety.",
-                                            {}
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize().padding(padding),
+                                contentPadding = PaddingValues(bottom = 28.dp),
+                                verticalArrangement = Arrangement.spacedBy(9.dp)
+                            ) {
+                                item(key = "servers_header") {
+                                    Column(
+                                        Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Row(
+                                            Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("Servers", color = TextMain, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                                            Spacer(Modifier.width(8.dp))
+                                            Box(
+                                                Modifier.clip(RoundedCornerShape(10.dp))
+                                                    .background(SurfaceHigh)
+                                                    .padding(horizontal = 9.dp, vertical = 3.dp)
+                                            ) {
+                                                Text("${servers.size}", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                            Spacer(Modifier.weight(1f))
+                                            Text(
+                                                if (serverSearch.isBlank()) "Choose a server" else "${servers.count { it.name.contains(serverSearch, true) }} found",
+                                                color = TextMuted,
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                        OutlinedTextField(
+                                            value = serverSearch,
+                                            onValueChange = { serverSearch = it },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            singleLine = true,
+                                            placeholder = { Text("Search servers…") },
+                                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Accent) },
+                                            trailingIcon = {
+                                                if (serverSearch.isNotEmpty()) {
+                                                    IconButton(onClick = { serverSearch = "" }) {
+                                                        Icon(Icons.Default.Close, contentDescription = "Clear search")
+                                                    }
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(13.dp),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = Accent,
+                                                unfocusedBorderColor = SurfaceHigh,
+                                                focusedContainerColor = SurfaceC,
+                                                unfocusedContainerColor = SurfaceC
+                                            )
                                         )
                                     }
                                 }
-                            }
-                            if (error != null) {
-                                item(key = "connection_error") {
-                                    Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                                        ErrorCard(error, onDismissError)
+                                if (tampered) {
+                                    item(key = "integrity_error") {
+                                        Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                            ErrorCard(
+                                                "App signature does not match the official build – connection disabled for your safety.",
+                                                {}
+                                            )
+                                        }
                                     }
                                 }
-                            }
-
-                            val visibleServers = servers.filter {
-                                serverSearch.isBlank() || it.name.contains(serverSearch.trim(), ignoreCase = true)
-                            }
-                            if (servers.isEmpty()) {
-                                item(key = "empty_servers") {
-                                    Column(
-                                        Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                                            .clip(RoundedCornerShape(22.dp))
-                                            .background(SurfaceC)
-                                            .padding(28.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        Icon(Icons.Default.Dns, null, tint = Accent, modifier = Modifier.size(38.dp))
-                                        Spacer(Modifier.height(10.dp))
-                                        Text("No servers yet", color = TextMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                        Spacer(Modifier.height(4.dp))
+                                if (error != null) {
+                                    item(key = "connection_error") {
+                                        Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                            ErrorCard(error, onDismissError)
+                                        }
+                                    }
+                                }
+                                val visibleServers = servers.filter {
+                                    serverSearch.isBlank() || it.name.contains(serverSearch.trim(), ignoreCase = true)
+                                }
+                                if (servers.isEmpty()) {
+                                    item(key = "empty_servers") {
+                                        Column(
+                                            Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                                                .clip(RoundedCornerShape(22.dp))
+                                                .background(SurfaceC)
+                                                .padding(28.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Icon(Icons.Default.Dns, null, tint = Accent, modifier = Modifier.size(38.dp))
+                                            Spacer(Modifier.height(10.dp))
+                                            Text("No servers yet", color = TextMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                            Spacer(Modifier.height(4.dp))
+                                            Text(
+                                                "Use the menu to add a server or update your list.",
+                                                color = TextMuted,
+                                                fontSize = 13.sp,
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                    }
+                                } else if (visibleServers.isEmpty()) {
+                                    item(key = "no_search_results") {
                                         Text(
-                                            "Use the menu to add a server or update your list.",
+                                            "No servers match your search.",
                                             color = TextMuted,
-                                            fontSize = 13.sp,
+                                            modifier = Modifier.fillMaxWidth().padding(28.dp),
                                             textAlign = TextAlign.Center
                                         )
                                     }
-                                }
-                            } else if (visibleServers.isEmpty()) {
-                                item(key = "no_search_results") {
-                                    Text(
-                                        "No servers match your search.",
-                                        color = TextMuted,
-                                        modifier = Modifier.fillMaxWidth().padding(28.dp),
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                            } else {
-                                items(visibleServers, key = { it.id }) { entry ->
-                                    Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                                        ServerCard(
-                                            entry = entry,
-                                            badge = "",
-                                            selected = entry.id == selectedId,
-                                            onSelect = {
-                                                select(entry.id)
-                                                if (status != VpnStatus.Connecting && status != VpnStatus.Disconnecting) {
-                                                    onConnect(entry)
+                                } else {
+                                    items(visibleServers, key = { it.id }) { entry ->
+                                        Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                            ServerCard(
+                                                entry = entry,
+                                                badge = "",
+                                                selected = entry.id == selectedId,
+                                                onSelect = {
+                                                    select(entry.id)
+                                                    currentTab = "HOME"
+                                                    message("Selected: ${entry.name}")
+                                                },
+                                                onEdit = { openEditor(entry) },
+                                                onCopyUri = {
+                                                    if (entry.isOpenVpn) {
+                                                        OvpnProfile.fromJson(entry.config)?.let { copyText(".ovpn", it.config) }
+                                                    } else if (entry.uri.isNotBlank()) copyText("URI", entry.uri)
+                                                    else message("No link stored for this server – use Copy JSON")
+                                                },
+                                                onCopyJson = { copyText("JSON", entry.config) },
+                                                onDuplicate = {
+                                                    val copy = entry.copy(
+                                                        id = java.util.UUID.randomUUID().toString(),
+                                                        name = entry.name + " copy"
+                                                    )
+                                                    saveServers(servers + copy)
+                                                },
+                                                onDelete = {
+                                                    if (!entry.locked) {
+                                                        saveServers(servers.filter { it.id != entry.id })
+                                                        if (selectedId == entry.id) select("")
+                                                    }
                                                 }
-                                            },
-                                            onEdit = { openEditor(entry) },
-                                            onCopyUri = {
-                                                if (entry.isOpenVpn) {
-                                                    OvpnProfile.fromJson(entry.config)?.let { copyText(".ovpn", it.config) }
-                                                } else if (entry.uri.isNotBlank()) copyText("URI", entry.uri)
-                                                else message("No link stored for this server – use Copy JSON")
-                                            },
-                                            onCopyJson = { copyText("JSON", entry.config) },
-                                            onDuplicate = {
-                                                val copy = entry.copy(
-                                                    id = java.util.UUID.randomUUID().toString(),
-                                                    name = entry.name + " copy"
-                                                )
-                                                saveServers(servers + copy)
-                                            },
-                                            onDelete = {
-                                                if (!entry.locked) {
-                                                    saveServers(servers.filter { it.id != entry.id })
-                                                    if (selectedId == entry.id) select("")
-                                                }
-                                            }
-                                        )
+                                            )
+                                        }
                                     }
                                 }
+                            }
                             }
                         }
                     }
@@ -911,7 +933,7 @@ private fun ConnectHero(
         Modifier.fillMaxWidth().padding(top = 0.dp, bottom = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(Modifier.size(148.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(236.dp), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxSize()) {
                 val maxR = size.minDimension / 2f
                 // static halo
@@ -929,20 +951,20 @@ private fun ConnectHero(
                 }
             }
             Box(
-                Modifier.size(88.dp)
+                Modifier.size(128.dp)
                     .shadow(18.dp, CircleShape, ambientColor = color, spotColor = color)
                     .clip(CircleShape)
                     .background(Brush.linearGradient(listOf(color, color.copy(alpha = 0.72f))))
                     .clickable(enabled = !busyLocked, onClick = onClick),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.PowerSettingsNew, contentDescription = "Connect", tint = OnHero, modifier = Modifier.size(38.dp))
+                Icon(Icons.Default.PowerSettingsNew, contentDescription = "Connect", tint = OnHero, modifier = Modifier.size(56.dp))
             }
             if (status == VpnStatus.Connecting || status == VpnStatus.Disconnecting) {
-                CircularProgressIndicator(Modifier.size(104.dp), color = color, strokeWidth = 2.5.dp)
+                CircularProgressIndicator(Modifier.size(150.dp), color = color, strokeWidth = 2.5.dp)
             }
         }
-        Text(label, color = color, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = color, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(2.dp))
         val sub = when {
             status == VpnStatus.Connected -> formatElapsed(elapsed)
@@ -1223,20 +1245,27 @@ private fun tryDecodeSubscription(body: String): String {
 
 
 @Composable
-private fun HomeLogsBottomBar(
-    selectedLogs: Boolean,
+private fun HomeConfigLogsBottomBar(
+    selectedTab: String,
     onHome: () -> Unit,
+    onConfig: () -> Unit,
     onLogs: () -> Unit
 ) {
     NavigationBar(containerColor = SurfaceC) {
         NavigationBarItem(
-            selected = !selectedLogs,
+            selected = selectedTab == "HOME",
             onClick = onHome,
             icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
             label = { Text("HOME") }
         )
         NavigationBarItem(
-            selected = selectedLogs,
+            selected = selectedTab == "CONFIG",
+            onClick = onConfig,
+            icon = { Icon(Icons.Default.Dns, contentDescription = "Configurations") },
+            label = { Text("CONFIG") }
+        )
+        NavigationBarItem(
+            selected = selectedTab == "LOGS",
             onClick = onLogs,
             icon = { Icon(Icons.Default.ReceiptLong, contentDescription = "Logs") },
             label = { Text("LOGS") }
@@ -1258,9 +1287,10 @@ private fun LogsScreen(onBack: () -> Unit) {
     Scaffold(
         containerColor = Bg,
         bottomBar = {
-            HomeLogsBottomBar(
-                selectedLogs = true,
+            HomeConfigLogsBottomBar(
+                selectedTab = "LOGS",
                 onHome = onBack,
+                onConfig = onBack,
                 onLogs = {}
             )
         },
