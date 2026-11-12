@@ -136,5 +136,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
+    // SSH client (maintained JSch fork) for the SSH tunnel types
+    implementation("com.github.mwiede:jsch:0.2.20")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
