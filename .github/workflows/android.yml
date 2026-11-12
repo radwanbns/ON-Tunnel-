@@ -187,7 +187,7 @@ jobs:
           func(timeoutError)Error()string{return "i/o timeout"}
           func(timeoutError)Timeout()bool{return true}
           func(timeoutError)Temporary()bool{return true}
-          func(c *resolverPacketConn)Close()error{c.mu.Lock();defer c.mu.Unlock();c.closed=true;close(c.done);if c.client!=nil{c.client.CloseIdleConnections()};return nil}
+          func(c *resolverPacketConn)Close()error{c.mu.Lock();defer c.mu.Unlock();if !c.closed{c.closed=true;close(c.done);if c.client!=nil{c.client.CloseIdleConnections()}};return nil}
           func(c *resolverPacketConn)LocalAddr()net.Addr{return resolverAddr("local-dns")}
           func(c *resolverPacketConn)SetDeadline(t time.Time)error{c.mu.Lock();c.deadline=t;c.mu.Unlock();return nil}
           func(c *resolverPacketConn)SetReadDeadline(t time.Time)error{return c.SetDeadline(t)}
