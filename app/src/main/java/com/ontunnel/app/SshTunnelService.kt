@@ -81,19 +81,23 @@ class SshTunnelService : Service() {
             var port = profile.port
             if (profile.isDnstt) {
                 AppLogs.add(this, "DNSTT: starting DNS tunnel")
+                AppLogs.add(this, "DNSTT: loading native client")
                 val client = Mobile.newClient(
                     profile.dnsServer.trim(),
                     profile.dnsDomain.trim(),
                     profile.dnsKey.trim(),
                     "127.0.0.1:0"
                 )
+                // Register cleanup before start in case native initialization fails.
+                dnsttStop = { client.stop() }
+                AppLogs.add(this, "DNSTT: native client loaded; starting DNS handshake")
                 client.start()
+                AppLogs.add(this, "DNSTT: DNS handshake completed")
                 val localPort = client.localPort()
                 if (localPort <= 0) {
                     client.stop()
                     throw IOException("DNSTT did not open its local TCP listener")
                 }
-                dnsttStop = { client.stop() }
                 host = "127.0.0.1"
                 require(localPort in 1L..65535L) { "DNSTT returned an invalid local port: $localPort" }
                 port = localPort.toInt()
@@ -160,6 +164,14 @@ class SshTunnelService : Service() {
                 updateNotification("SSH Connected")
                 onReady?.invoke(socksPort)
             }
+        } catch (e: LinkageError) {
+            if (gen != generation) return
+            val msg = "DNSTT/V2Ray native library error: ${e.javaClass.simpleName}: ${e.message ?: "JNI library could not be loaded"}"
+            report {
+                AppLogs.add(this, msg.take(300))
+                updateNotification("SSH connection failed")
+                onFailed?.invoke(msg.take(300))
+            }
         } catch (e: Exception) {
             if (gen != generation) return
             val msg = friendly(e)
@@ -171,7 +183,7 @@ class SshTunnelService : Service() {
         }
     }
 
-    private fun friendly(e: Exception): String {
+    private fun friendly(e: Throwable): String {
         val m = e.message ?: e.javaClass.simpleName
         return when {
             m.contains("Auth fail", ignoreCase = true) || m.contains("Auth cancel", ignoreCase = true) ->
