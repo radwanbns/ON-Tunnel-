@@ -89,7 +89,7 @@ class SshTunnelService : Service() {
                 )
                 client.start()
                 val localPort = client.localPort()
-                if (localPort !in 1..65535) {
+                if (localPort <= 0) {
                     client.stop()
                     throw IOException("DNSTT did not open its local TCP listener")
                 }
