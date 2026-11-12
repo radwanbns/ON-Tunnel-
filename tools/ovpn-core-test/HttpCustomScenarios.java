@@ -139,6 +139,34 @@ public class HttpCustomScenarios {
             p2.stop();
         }
 
+        // 4b) HTTP proxy: do not consume a disposable CONNECT during preflight.
+        // The first CONNECT must be the real OpenVPN relay session.
+        {
+            final AtomicInteger connects = new AtomicInteger();
+            ServerSocket proxyServer = server((no, s, in, out) -> {
+                connects.incrementAndGet();
+                String request = hdr(in);
+                if (!request.startsWith("CONNECT vpn.example.com:443")) throw new IOException("Expected CONNECT, got: " + request);
+                out.write("HTTP/1.1 200 Connection established\\r\\nProxy-Agent: test\\r\\n\\r\\n".getBytes()); out.flush();
+                echoUpper(in, out);
+            });
+            TransportConfig c = base(proxyServer.getLocalPort(), TransportConfig.MODE_PAYLOAD,
+                    "CONNECT [host_port] HTTP/1.1[crlf]Host: [host_port][crlf][crlf]");
+            c.deferPreflight = true;
+            List<String> errs = Collections.synchronizedList(new ArrayList<String>());
+            TransportProxy p = proxy(c, errs);
+            int localPort = p.start();
+            p.prepare(); // must not open a disposable CONNECT tunnel
+            Socket client = new Socket("127.0.0.1", localPort);
+            client.setSoTimeout(5000);
+            client.getOutputStream().write("http-proxy".getBytes()); client.getOutputStream().flush();
+            byte[] answer = new byte[10]; new DataInputStream(client.getInputStream()).readFully(answer);
+            client.close();
+            check("HTTP proxy: deferred CONNECT uses one real tunnel (dials=" + connects.get() + ", errs=" + errs + ")",
+                    new String(answer).equals("HTTP-PROXY") && connects.get() == 1 && errs.isEmpty());
+            p.stop();
+        }
+
         // 5) legacy mode: lenient 200 (not 101) then raw; and silence then raw
         {
             ServerSocket s200 = server((no, s, in, out) -> {
