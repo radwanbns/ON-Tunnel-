@@ -127,6 +127,7 @@ data class OvpnProfile(
         t.tls = tls
         t.sni = sni.trim()
         t.allowInsecure = allowInsecure
+        t.deferPreflight = proxyHost.isNotBlank() && mode == OvpnMode.PAYLOAD
         t.payload = payload
         t.wsPath = wsPath
         t.wsHost = wsHost.trim()
