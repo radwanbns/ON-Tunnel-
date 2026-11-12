@@ -127,8 +127,9 @@ data class OvpnProfile(
         t.tls = tls
         t.sni = sni.trim()
         t.allowInsecure = allowInsecure
-        // HTTP PAYLOAD must be sent only on the real OpenVPN stream, not on a disposable preflight socket.
-        t.deferPreflight = mode == OvpnMode.PAYLOAD
+        // The payload handshake is done BEFORE OpenVPN starts and that very session is handed to OpenVPN's
+        // first connection (no disposable preflight), so the first attempt connects without "connection retry".
+        t.deferPreflight = false
         t.payload = payload
         t.wsPath = wsPath
         t.wsHost = wsHost.trim()

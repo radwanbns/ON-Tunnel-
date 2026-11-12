@@ -436,6 +436,7 @@ class MainActivity : ComponentActivity() {
                 status = VpnStatus.Connected
                 statusDetail = null
                 errorMessage = null
+                hintHideOvpnNotification()
             }
             state == "AUTH_FAILED" || level == "LEVEL_AUTH_FAILED" -> {
                 failOvpn("Authentication failed – check the username and password")
@@ -515,6 +516,24 @@ class MainActivity : ComponentActivity() {
         }, 2500L)
     }
 
+    /**
+     * The persistent "OpenVPN for Android" notification belongs to that app and cannot be removed from here.
+     * Once, open its notification settings so the user can switch it off (the tunnel keeps running);
+     * ON Tunnel's own notification (app name + KB/s / MB/s) stays visible.
+     */
+    private fun hintHideOvpnNotification() {
+        val prefs = getSharedPreferences("on_tunnel_core", MODE_PRIVATE)
+        if (prefs.getBoolean("ovpn_notif_hint", false)) return
+        prefs.edit().putBoolean("ovpn_notif_hint", true).apply()
+        try {
+            val i = Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, OpenVpnController.PKG)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            Toast.makeText(this, "أوقف إشعارات OpenVPN for Android لإخفائها (الاتصال سيبقى يعمل)", Toast.LENGTH_LONG).show()
+            startActivity(i)
+        } catch (_: Exception) { }
+    }
+
     private fun openOvpnStore() {
         ovpnMissing = false
         val uris = listOf("market://details?id=${OpenVpnController.PKG}", "https://play.google.com/store/apps/details?id=${OpenVpnController.PKG}")
@@ -524,7 +543,7 @@ class MainActivity : ComponentActivity() {
                 return
             } catch (_: ActivityNotFoundException) { }
         }
-        Toast.makeText(this, "Install \"OpenVPN for Android\" from Google Play or F-Droid", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "Install "OpenVPN for Android" from Google Play or F-Droid", Toast.LENGTH_LONG).show()
     }
 
     override fun onDestroy() {
