@@ -858,7 +858,7 @@ internal fun ONTunnelApp(
                 }
             }
 
-            appUpdate?.takeIf { !showTelegram }?.let { update ->
+            if (updateDownloading) {\n                AlertDialog(\n                    onDismissRequest = { },\n                    containerColor = SurfaceC,\n                    title = { Text("Downloading ON Tunnel", fontWeight = FontWeight.Bold) },\n                    text = {\n                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {\n                            LinearProgressIndicator(progress = { updateProgress / 100f }, modifier = Modifier.fillMaxWidth())\n                            Text("$updateProgress%", color = TextMuted, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)\n                            Text("Please keep the app open until the download finishes.", color = TextMuted)\n                        }\n                    },\n                    confirmButton = {}\n                )\n            }\n\n            appUpdate?.takeIf { !showTelegram && !updateDownloading }?.let { update ->
                 AlertDialog(
                     onDismissRequest = onDismissAppUpdate,
                     containerColor = SurfaceC,
