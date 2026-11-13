@@ -26,6 +26,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -49,6 +50,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -396,7 +398,35 @@ internal fun ONTunnelApp(
     }
 
     MaterialTheme(colorScheme = appColorScheme(dark)) {
-        Surface(color = Bg, modifier = Modifier.fillMaxSize()) {
+        Surface(
+            color = Bg,
+            modifier = Modifier.fillMaxSize().pointerInput(currentTab) {
+                var horizontalDrag = 0f
+                detectHorizontalDragGestures(
+                    onHorizontalDrag = { change, dragAmount ->
+                        change.consume()
+                        horizontalDrag += dragAmount
+                    },
+                    onDragEnd = {
+                        if (horizontalDrag < -60f) {
+                            currentTab = when (currentTab) {
+                                "HOME" -> "CONFIG"
+                                "CONFIG" -> "LOGS"
+                                else -> "LOGS"
+                            }
+                        } else if (horizontalDrag > 60f) {
+                            currentTab = when (currentTab) {
+                                "LOGS" -> "CONFIG"
+                                "CONFIG" -> "HOME"
+                                else -> "HOME"
+                            }
+                        }
+                        horizontalDrag = 0f
+                    },
+                    onDragCancel = { horizontalDrag = 0f }
+                )
+            }
+        ) {
             val v2Target = editing
             val ovTarget = ovpnEditing
             val sshTarget = sshEditing
@@ -531,11 +561,6 @@ internal fun ONTunnelApp(
                                                 onClick = { menuOpen = false; showAddSheet = true }
                                             )
                                             DropdownMenuItem(
-                                                text = { Text("Telegram channel") },
-                                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Send, null) },
-                                                onClick = { menuOpen = false; openTelegram(context) }
-                                            )
-                                            DropdownMenuItem(
                                                 text = { Text("Paste link / JSON") },
                                                 leadingIcon = { Icon(Icons.Default.Edit, null) },
                                                 onClick = { menuOpen = false; showPaste = true }
@@ -568,8 +593,14 @@ internal fun ONTunnelApp(
                                     }
                                 },
                                 actions = {
-                                    IconButton(onClick = { showAddSheet = true }) {
-                                        Icon(Icons.Default.Add, "Add server", tint = Accent)
+                                    if (currentTab == "HOME") {
+                                        IconButton(onClick = { openTelegram(context) }) {
+                                            Icon(
+                                                Icons.AutoMirrored.Filled.Send,
+                                                contentDescription = "Telegram channel",
+                                                tint = Accent
+                                            )
+                                        }
                                     }
                                 },
                                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
