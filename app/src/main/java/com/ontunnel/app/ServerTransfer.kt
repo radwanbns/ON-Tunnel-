@@ -131,6 +131,16 @@ object ServerTransfer {
      * Base64 is encoding, not encryption: credentials remain recoverable.
      */
     fun shareUri(entry: ServerEntry, locked: Boolean): String {
+        // A locked URI carries the lock state together with the complete profile.
+        // Native VLESS/VMess/Trojan URIs cannot represent ON Tunnel's read-only flag.
+        if (locked) {
+            val portable = entry.copy(locked = true, subscription = false)
+            val encoded = Base64.encodeToString(
+                portable.toJson().toString().toByteArray(Charsets.UTF_8),
+                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+            )
+            return "ontunnel://locked/$encoded#${enc(entry.name)}"
+        }
         if (entry.type == ServerEntry.TYPE_V2RAY) {
             if (entry.uri.isNotBlank()) return entry.uri
             val encoded = Base64.encodeToString(entry.config.toByteArray(Charsets.UTF_8),
@@ -163,6 +173,29 @@ object ServerTransfer {
 
     fun importText(text: String): List<ServerEntry> {
         val raw = text.trim()
+        if (raw.startsWith("ontunnel://locked/", true)) {
+            val encoded = raw.substringAfter("ontunnel://locked/", "")
+                .substringBefore('#').trim()
+            require(encoded.isNotBlank()) { "Locked URI has no server data" }
+            val decoded = String(
+                Base64.decode(encoded, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING),
+                Charsets.UTF_8
+            )
+            val imported = ServerEntry.fromJson(JSONObject(decoded))
+                ?: error("Invalid locked server URI")
+            require(imported.type in setOf(
+                ServerEntry.TYPE_V2RAY,
+                ServerEntry.TYPE_OPENVPN,
+                ServerEntry.TYPE_SSH
+            )) { "Unsupported server type in locked URI" }
+            return listOf(
+                imported.copy(
+                    id = java.util.UUID.randomUUID().toString(),
+                    locked = true,
+                    subscription = false
+                )
+            )
+        }
         if (raw.startsWith("ovpn://", true) || raw.startsWith("ssh://", true)) {
             val scheme = raw.substringBefore("://").lowercase()
             val query = raw.substringAfter('?').substringBefore('#')
