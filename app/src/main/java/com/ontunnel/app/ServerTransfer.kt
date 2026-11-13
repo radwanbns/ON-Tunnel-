@@ -51,7 +51,7 @@ object ServerTransfer {
         JSONObject(text.trim()).optString("format") == LOCKED_FORMAT
     }.getOrDefault(false)
 
-    fun import(text: String, password: String? = null): List<ServerEntry> {
+    fun importServers(text: String, password: String? = null): List<ServerEntry> {
         val raw = text.trim()
         require(raw.isNotEmpty()) { "File is empty" }
         val root = JSONObject(raw)
@@ -112,7 +112,7 @@ object ServerTransfer {
                 Base64.decode(body, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING),
                 Charsets.UTF_8
             )
-            return import(JSONObject().put("format", FORMAT).put("version", VERSION)
+            return importServers(JSONObject().put("format", FORMAT).put("version", VERSION)
                 .put("servers", JSONArray().put(JSONObject(decoded))).toString())
         }
         if (raw.startsWith("{")) {
@@ -121,7 +121,7 @@ object ServerTransfer {
                 val parsed = V2RayConfigParser.parse(raw)
                 return listOf(ServerEntry(name = parsed.name, config = parsed.config, uri = parsed.uri))
             }
-            return import(raw)
+            return importServers(raw)
         }
         val entries = mutableListOf<ServerEntry>()
         raw.lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }.forEach { line ->
