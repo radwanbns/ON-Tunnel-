@@ -175,7 +175,6 @@ class ONTunnelVpnService : VpnService() {
         const val EXTRA_PROTOCOL = "protocol"
         const val EXTRA_STATE = "state"
         const val EXTRA_ERROR = "error"
-        const val EXTRA_PROTOCOL = "protocol"
         const val NOTIFICATION_ID = 7001
 
         @Volatile
