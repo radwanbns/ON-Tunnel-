@@ -31,7 +31,7 @@ object ServerTransfer {
 
         val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
         val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
-        val key = derive(password, salt)
+        val key = derive(password, salt, ITERATIONS)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(128, iv))
         cipher.updateAAD("$LOCKED_FORMAT:$VERSION".toByteArray(Charsets.UTF_8))
@@ -60,6 +60,7 @@ object ServerTransfer {
             require(!password.isNullOrEmpty()) { "Password is required for this locked file" }
             val version = root.optInt("version", -1)
             require(version == VERSION) { "Unsupported locked file version" }
+            require(root.optString("kdf") == "PBKDF2-HMAC-SHA256") { "Unsupported encryption method" }
             val iterations = root.optInt("iterations", ITERATIONS)
             require(iterations in 100_000..1_000_000) { "Invalid encryption settings" }
             val salt = Base64.decode(root.getString("salt"), Base64.DEFAULT)
@@ -67,7 +68,7 @@ object ServerTransfer {
             val data = Base64.decode(root.getString("data"), Base64.DEFAULT)
             require(salt.size == 16 && iv.size == 12) { "Invalid locked file" }
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, derive(password!!, salt), GCMParameterSpec(128, iv))
+            cipher.init(Cipher.DECRYPT_MODE, derive(password!!, salt, iterations), GCMParameterSpec(128, iv))
             cipher.updateAAD("$LOCKED_FORMAT:$VERSION".toByteArray(Charsets.UTF_8))
             String(cipher.doFinal(data), Charsets.UTF_8)
         } else raw
@@ -133,7 +134,7 @@ object ServerTransfer {
     }
 
     /** PBKDF2-HMAC-SHA256 implemented with Mac for Android API 24 compatibility. */
-    private fun derive(password: String, salt: ByteArray): SecretKeySpec {
+    private fun derive(password: String, salt: ByteArray, iterations: Int): SecretKeySpec {
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(javax.crypto.spec.SecretKeySpec(password.toByteArray(Charsets.UTF_8), "HmacSHA256"))
         val block = ByteArray(salt.size + 4)
@@ -141,7 +142,7 @@ object ServerTransfer {
         block[block.size - 1] = 1
         var u = mac.doFinal(block)
         val result = u.copyOf()
-        for (i in 2..ITERATIONS) {
+        for (i in 2..iterations) {
             u = mac.doFinal(u)
             for (j in result.indices) result[j] = (result[j].toInt() xor u[j].toInt()).toByte()
         }
