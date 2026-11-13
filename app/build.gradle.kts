@@ -84,9 +84,19 @@ android {
         aidl = true
     }
 
-    // Do not globally exclude x86: the dedicated x86 build needs these libraries.
-    // The ARM Universal APK is kept ARM-only by its ABI_FILTERS build property.
+    // Keep the ARM Universal APK free of x86 native libraries while allowing
+    // the separate x86 build to package those libraries.
+    val selectedAbisForPackaging = (project.findProperty("ABI_FILTERS") as? String)
+        ?.split(";")?.filter { it.isNotBlank() }
+        ?: listOf("arm64-v8a", "armeabi-v7a")
 
+    packaging {
+        jniLibs {
+            if (!selectedAbisForPackaging.contains("x86")) {
+                excludes += setOf("**/x86/**", "**/x86_64/**")
+            }
+        }
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
