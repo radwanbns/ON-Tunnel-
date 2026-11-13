@@ -13,6 +13,8 @@ data class ServerEntry(
     val uri: String = "",
     /** Locked = came from the hidden subscription: details are never shown or editable. */
     val locked: Boolean = false,
+    /** True only for entries supplied by the built-in GitHub subscription. */
+    val subscription: Boolean = false,
     /** "v2ray" (default, Xray JSON in [config]) or "openvpn" (OvpnProfile JSON in [config]) or "ssh" (SshProfile JSON in [config]). */
     val type: String = TYPE_V2RAY
 ) {
@@ -20,7 +22,7 @@ data class ServerEntry(
     val isSsh: Boolean get() = type == TYPE_SSH
 
     fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name)
-        .put("config", config).put("uri", uri).put("locked", locked).put("type", type)
+        .put("config", config).put("uri", uri).put("locked", locked).put("subscription", subscription).put("type", type)
 
     companion object {
         fun fromJson(o: JSONObject): ServerEntry? {
@@ -32,6 +34,7 @@ data class ServerEntry(
                 config = config,
                 uri = o.optString("uri"),
                 locked = o.optBoolean("locked", false),
+                subscription = o.optBoolean("subscription", false),
                 type = o.optString("type", TYPE_V2RAY).ifBlank { TYPE_V2RAY }
             )
         }
