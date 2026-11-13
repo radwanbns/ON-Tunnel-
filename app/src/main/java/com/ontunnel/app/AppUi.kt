@@ -1257,6 +1257,7 @@ private fun MoreScreen(
                     onValueChange = { httpPortText = it.filter(Char::isDigit).take(5) },
                     label = { Text("HTTP proxy port") },
                     singleLine = true,
+                    enabled = !httpEnabled,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1289,6 +1290,7 @@ private fun MoreScreen(
                     onValueChange = { socksPortText = it.filter(Char::isDigit).take(5) },
                     label = { Text("SOCKS5 proxy port") },
                     singleLine = true,
+                    enabled = !socksEnabled,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
