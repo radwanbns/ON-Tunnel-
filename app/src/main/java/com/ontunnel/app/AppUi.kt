@@ -1340,15 +1340,27 @@ private fun fetchAndParseSubscription(url: String): Result<List<ServerEntry>> = 
     val errors = mutableListOf<String>()
     for (line in lines) {
         try {
-            if (line.startsWith("ontunnel://server/", ignoreCase = true)) {
-                // ON Tunnel portable URI carries the complete SSH/OpenVPN/V2Ray profile.
-                // Subscription entries are always forced locked, regardless of the URI flag.
+            if (
+                line.startsWith("ontunnel://server/", ignoreCase = true) ||
+                line.startsWith("ovpn://", ignoreCase = true) ||
+                line.startsWith("ssh://", ignoreCase = true) ||
+                line.startsWith("v2ray://", ignoreCase = true)
+            ) {
+                // ON Tunnel protocol-specific URIs carry complete SSH/OpenVPN/V2Ray profiles.
+                // Every entry fetched from the built-in subscription is locked and marked
+                // as a subscription entry, regardless of flags embedded in the URI.
                 val imported = ServerTransfer.importText(line)
-                entries += imported.map { it.copy(locked = true) }
+                entries += imported.map { it.copy(locked = true, subscription = true) }
             } else {
-                // Standard V2Ray subscription links (VLESS / VMess / Trojan / Shadowsocks).
+                // Standard V2Ray subscription links (VLESS / VMess / Trojan).
                 val parsed = V2RayConfigParser.parse(line)
-                entries += ServerEntry(name = parsed.name, config = parsed.config, uri = parsed.uri, locked = true)
+                entries += ServerEntry(
+                    name = parsed.name,
+                    config = parsed.config,
+                    uri = parsed.uri,
+                    locked = true,
+                    subscription = true
+                )
             }
         } catch (e: Exception) {
             errors += (e.message ?: "parse error")
