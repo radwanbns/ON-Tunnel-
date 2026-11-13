@@ -188,12 +188,30 @@ internal fun ONTunnelApp(
             val result = withContext(Dispatchers.IO) { fetchAndParseSubscription(SUBSCRIPTION_URL) }
             isUpdating = false
             result.onSuccess { fresh ->
-                val oldLocked = servers.filter { it.subscription }.associateBy { it.name }
-                val manual = servers.filter { !it.subscription }
-                val newLocked = fresh.distinctBy { it.name }.map { e ->
-                    (oldLocked[e.name]?.let { e.copy(id = it.id) } ?: e).copy(locked = true, subscription = true)
+                // Deduplicate subscription entries by actual profile, not display name.
+                // The same V2Ray URI can appear more than once with different labels.
+                fun profileKey(e: ServerEntry) = "${e.type}|${e.config.trim()}"
+                val uniqueFresh = fresh.distinctBy { profileKey(it) }
+
+                val previousSubscription = servers.filter { it.subscription }
+                // Older app versions saved Raw subscription entries as locked=true but
+                // without the subscription marker. Match those against the downloaded
+                // profiles and migrate them instead of keeping a second copy as manual.
+                val legacySubscription = servers.filter { old ->
+                    !old.subscription && old.locked &&
+                        uniqueFresh.any { profileKey(it) == profileKey(old) }
                 }
-                val added = newLocked.count { it.name !in oldLocked }
+                val oldByProfile = (previousSubscription + legacySubscription)
+                    .associateBy { profileKey(it) }
+
+                val newLocked = uniqueFresh.map { e ->
+                    (oldByProfile[profileKey(e)]?.let { e.copy(id = it.id) } ?: e)
+                        .copy(locked = true, subscription = true)
+                }
+                val previousKeys = (previousSubscription + legacySubscription)
+                    .map { profileKey(it) }.toSet()
+                val added = newLocked.count { profileKey(it) !in previousKeys }
+                val manual = servers.filter { !it.subscription && it !in legacySubscription }
                 val merged = newLocked + manual
                 saveServers(merged)
                 if (merged.none { it.id == selectedId }) select(merged.firstOrNull()?.id.orEmpty())
