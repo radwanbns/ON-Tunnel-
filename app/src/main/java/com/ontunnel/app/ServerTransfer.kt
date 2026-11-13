@@ -120,6 +120,9 @@ object ServerTransfer {
         val mode = lines[1].trim()
         require(mode == "U" || mode == "L") { "Unsupported .cot file mode" }
         val payload = String(Base64.decode(lines.drop(2).joinToString("").trim(), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING), Charsets.UTF_8)
+        if (mode == "L") require(isLockedFile(payload)) {
+            "This older .cot file is only Base64-encoded, not encrypted. Ask the owner to export it again with a password."
+        }
         val imported = importServers(payload, password, preserveLock = mode == "L")
         require(imported.size == 1) { "A .cot file must contain exactly one server" }
         return imported.single().copy(locked = mode == "L", subscription = false)
