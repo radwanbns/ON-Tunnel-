@@ -335,9 +335,13 @@ internal fun ONTunnelApp(
         val uri = incomingServerFileUri
         if (uri != null) {
             try {
-                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Cannot read file")
-                if (bytes.size > 5_000_000) error("Server file is too large")
-                val text = String(bytes, Charsets.UTF_8)
+                val text = if (uri.scheme.equals("ontunnel", ignoreCase = true)) {
+                    uri.toString()
+                } else {
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Cannot read file")
+                    if (bytes.size > 5_000_000) error("Server file is too large")
+                    String(bytes, Charsets.UTF_8)
+                }
                 if (ServerTransfer.isCotFile(text)) {
                     beginCotImport(text)
                 } else if (OvpnConfigTools.looksLikeOvpn(text)) {
