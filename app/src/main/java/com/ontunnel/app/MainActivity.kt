@@ -280,6 +280,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun connect(entry: ServerEntry) {
+        // Locked servers must never expose their name, username, host, or protocol details in Logs.
+        AppLogs.setServerDetailsVisible(this, visible = !entry.locked, clearWhenHidden = entry.locked)
         errorMessage = null
         if (entry.isSsh) {
             val profile = SshProfile.fromJson(entry.config)
