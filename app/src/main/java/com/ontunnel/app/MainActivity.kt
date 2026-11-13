@@ -122,7 +122,18 @@ class MainActivity : ComponentActivity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (activeProto == "openvpn") return
             when (intent?.getStringExtra(ONTunnelVpnService.EXTRA_STATE)) {
-                "connected" -> { AppLogs.add(this@MainActivity, "${if (activeProto == "ssh") "SSH" else "V2Ray"} tunnel connected"); status = VpnStatus.Connected; statusDetail = null; errorMessage = null }
+                "connected" -> {
+                    // Ignore repeated connected broadcasts for the same connection attempt.
+                    if (status != VpnStatus.Connected) {
+                        val protocol = intent.getStringExtra(ONTunnelVpnService.EXTRA_PROTOCOL)
+                            ?.uppercase()
+                            ?.takeIf { it == "SSH" } ?: if (activeProto == "ssh") "SSH" else "V2Ray"
+                        AppLogs.add(this@MainActivity, "$protocol tunnel connected")
+                    }
+                    status = VpnStatus.Connected
+                    statusDetail = null
+                    errorMessage = null
+                }
                 "disconnected" -> {
                     AppLogs.add(this@MainActivity, "Tunnel disconnected")
                     status = VpnStatus.Disconnected
