@@ -130,6 +130,7 @@ internal fun ONTunnelApp(
     var passwordPurpose by remember { mutableStateOf<String?>(null) }
     var passwordInput by remember { mutableStateOf("") }
     var pendingImportText by remember { mutableStateOf<String?>(null) }
+    var cotImportKeepLocked by remember { mutableStateOf(false) }
     var cotExportEntry by remember { mutableStateOf<ServerEntry?>(null) }
     var cotNoteInput by remember { mutableStateOf("") }
     var cotLockEnabled by remember { mutableStateOf(false) }
@@ -260,6 +261,13 @@ internal fun ONTunnelApp(
         message("Imported ${fresh.size} server(s)")
     }
 
+    fun beginCotImport(text: String) {
+        pendingImportText = text
+        passwordInput = ""
+        cotImportKeepLocked = ServerTransfer.isLockedCotFile(text)
+        passwordPurpose = "import_cot"
+    }
+
     fun shareServerUri(entry: ServerEntry, locked: Boolean) {
         try { val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager; cm.setPrimaryClip(ClipData.newPlainText("URI", ServerTransfer.shareUri(entry, locked))); Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show() }
         catch (e: Exception) { message(e.message ?: "This server cannot be copied as URI") }
@@ -276,11 +284,7 @@ internal fun ONTunnelApp(
         if (text.isBlank()) { message("Clipboard is empty"); return }
         if (ServerTransfer.isCotFile(text)) {
             try {
-                if (ServerTransfer.isLockedCotFile(text)) {
-                    pendingImportText = text
-                    passwordInput = ""
-                    passwordPurpose = "import_cot"
-                } else addImported(listOf(ServerTransfer.importCot(text)))
+                beginCotImport(text)
             } catch (e: Exception) { message(e.message ?: "Could not import .cot file") }
             return
         }
@@ -303,11 +307,7 @@ internal fun ONTunnelApp(
                 if (bytes.size > 5_000_000) error("Server file is too large")
                 val text = String(bytes, Charsets.UTF_8)
                 if (ServerTransfer.isCotFile(text)) {
-                    if (ServerTransfer.isLockedCotFile(text)) {
-                        pendingImportText = text
-                        passwordInput = ""
-                        passwordPurpose = "import_cot"
-                    } else addImported(listOf(ServerTransfer.importCot(text)))
+                    beginCotImport(text)
                 } else if (OvpnConfigTools.looksLikeOvpn(text)) {
                     openOvpnEditorFromText(text, displayName(context, uri)?.substringBeforeLast('.'))
                 } else if (ServerTransfer.isLockedFile(text)) {
@@ -339,11 +339,7 @@ internal fun ONTunnelApp(
             if (bytes.size > 5_000_000) error("Server file is too large")
             val text = String(bytes, Charsets.UTF_8)
             if (ServerTransfer.isCotFile(text)) {
-                if (ServerTransfer.isLockedCotFile(text)) {
-                    pendingImportText = text
-                    passwordInput = ""
-                    passwordPurpose = "import_cot"
-                } else addImported(listOf(ServerTransfer.importCot(text)))
+                beginCotImport(text)
             } else if (OvpnConfigTools.looksLikeOvpn(text)) {
                 openOvpnEditorFromText(text, displayName(context, uri)?.substringBeforeLast('.'))
             } else if (ServerTransfer.isLockedFile(text)) {
@@ -843,11 +839,7 @@ internal fun ONTunnelApp(
                             openOvpnEditorFromText(text)
                         } else if (ServerTransfer.isCotFile(text)) {
                             try {
-                                if (ServerTransfer.isLockedCotFile(text)) {
-                                    pendingImportText = text
-                                    passwordInput = ""
-                                    passwordPurpose = "import_cot"
-                                } else addImported(listOf(ServerTransfer.importCot(text)))
+                                beginCotImport(text)
                                 showPaste = false
                             } catch (e: Exception) {
                                 Toast.makeText(context, e.message ?: "Invalid .cot file", Toast.LENGTH_LONG).show()
@@ -908,9 +900,23 @@ internal fun ONTunnelApp(
                                 placeholder = { Text("<p>Server note: <a href=\"https://example.com\">Open link</a></p>") },
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 110.dp, max = 220.dp)
                             )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(checked = cotLockEnabled, onCheckedChange = { cotLockEnabled = it })
-                                Text("Lock file with password", color = TextMain, fontSize = 13.sp)
+                            Text("File protection", color = TextMain, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (cotLockEnabled) {
+                                    OutlinedButton(onClick = { cotLockEnabled = false }, modifier = Modifier.weight(1f)) {
+                                        Text("Unlocked")
+                                    }
+                                    Button(onClick = { cotLockEnabled = true }, modifier = Modifier.weight(1f)) {
+                                        Text("Locked")
+                                    }
+                                } else {
+                                    Button(onClick = { cotLockEnabled = false }, modifier = Modifier.weight(1f)) {
+                                        Text("Unlocked")
+                                    }
+                                    OutlinedButton(onClick = { cotLockEnabled = true }, modifier = Modifier.weight(1f)) {
+                                        Text("Locked")
+                                    }
+                                }
                             }
                             if (cotLockEnabled) {
                                 OutlinedTextField(
@@ -958,21 +964,38 @@ internal fun ONTunnelApp(
                         passwordInput = ""
                     },
                     containerColor = SurfaceC,
-                    title = { Text("Unlock server file", color = TextMain) },
+                    title = { Text(if (passwordPurpose == "import_cot") "Import .cot server" else "Unlock server file", color = TextMain) },
                     text = {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            val cotLockedSource = passwordPurpose == "import_cot" &&
+                                (pendingImportText?.let { ServerTransfer.isLockedCotFile(it) } == true)
                             Text(
-                                if (passwordPurpose == "import_cot") "Enter the password used to lock this .cot server file." else "Enter the password used to lock this ON Tunnel file.",
+                                if (passwordPurpose == "import_cot" && cotLockedSource)
+                                    "This .cot file is password-protected. Enter its password, then choose whether the imported server should stay locked."
+                                else if (passwordPurpose == "import_cot")
+                                    "Choose whether this imported .cot server should be locked or unlocked."
+                                else "Enter the password used to lock this ON Tunnel file.",
                                 color = TextMuted,
                                 fontSize = 13.sp
                             )
-                            OutlinedTextField(
-                                value = passwordInput,
-                                onValueChange = { passwordInput = it },
-                                label = { Text("Password") },
-                                singleLine = true,
-                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
-                            )
+                            if (passwordPurpose == "import_cot") {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(
+                                        checked = cotImportKeepLocked,
+                                        onCheckedChange = { cotImportKeepLocked = it }
+                                    )
+                                    Text("Keep imported server locked", color = TextMain, fontSize = 13.sp)
+                                }
+                            }
+                            if (passwordPurpose != "import_cot" || cotLockedSource) {
+                                OutlinedTextField(
+                                    value = passwordInput,
+                                    onValueChange = { passwordInput = it },
+                                    label = { Text("Password") },
+                                    singleLine = true,
+                                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
+                                )
+                            }
                         }
                     },
                     confirmButton = {
@@ -980,7 +1003,12 @@ internal fun ONTunnelApp(
                             try {
                                 val pending = pendingImportText ?: error("Missing file")
                                 if (passwordPurpose == "import_cot") {
-                                    addImported(listOf(ServerTransfer.importCot(pending, passwordInput)))
+                                    val needsPassword = ServerTransfer.isLockedCotFile(pending)
+                                    val imported = ServerTransfer.importCot(
+                                        pending,
+                                        if (needsPassword) passwordInput else null
+                                    ).copy(locked = cotImportKeepLocked, subscription = false)
+                                    addImported(listOf(imported))
                                 } else {
                                     addImported(ServerTransfer.importServers(pending, passwordInput))
                                 }
