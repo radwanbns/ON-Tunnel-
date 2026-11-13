@@ -442,10 +442,12 @@ internal fun ONTunnelApp(
                             currentTab = when (currentTab) {
                                 "HOME" -> "CONFIG"
                                 "CONFIG" -> "LOGS"
-                                else -> "LOGS"
+                                "LOGS" -> "MORE"
+                                else -> "MORE"
                             }
                         } else if (horizontalDrag > 60f) {
                             currentTab = when (currentTab) {
+                                "MORE" -> "LOGS"
                                 "LOGS" -> "CONFIG"
                                 "CONFIG" -> "HOME"
                                 else -> "HOME"
@@ -522,6 +524,15 @@ internal fun ONTunnelApp(
             } else if (currentTab == "LOGS") {
                 BackHandler { currentTab = "HOME" }
                 LogsScreen(onBack = { currentTab = "HOME" }, onConfig = { currentTab = "CONFIG" })
+            } else if (currentTab == "MORE") {
+                BackHandler { currentTab = "HOME" }
+                MoreScreen(
+                    themeMode = themeMode,
+                    onThemeChange = {
+                        themeMode = it
+                        store.themeMode = it
+                    }
+                )
             } else {
                 val selected = servers.firstOrNull { it.id == selectedId }
 
@@ -542,7 +553,8 @@ internal fun ONTunnelApp(
                                 selectedTab = currentTab,
                                 onHome = { currentTab = "HOME" },
                                 onConfig = { currentTab = "CONFIG" },
-                                onLogs = { currentTab = "LOGS" }
+                                onLogs = { currentTab = "LOGS" },
+                                onMore = { currentTab = "MORE" }
                             )
                         },
                         topBar = {
@@ -1239,6 +1251,90 @@ private fun SettingsPage(
 }
 
 @Composable
+private fun MoreScreen(
+    themeMode: String,
+    onThemeChange: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val version = remember {
+        try {
+            val info = context.packageManager.getPackageInfo(context.packageName, 0)
+            val code = if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+            "\${info.versionName ?: "Unknown"} ($code)"
+        } catch (_: Exception) { "Unknown" }
+    }
+    val socials = listOf(
+        Triple("YouTube", "https://youtube.com/@your_channel", Icons.Default.PlayCircle),
+        Triple("Telegram", "https://t.me/your_channel", Icons.AutoMirrored.Filled.Send),
+        Triple("WhatsApp", "https://wa.me/0000000000", Icons.Default.Chat),
+        Triple("Facebook", "https://facebook.com/your_page", Icons.Default.Facebook)
+    )
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Text("More", color = TextMain, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+        }
+        item {
+            SettingsCard(title = "Appearance") {
+                listOf("system" to "System default", "light" to "Light", "dark" to "Dark").forEach { (value, label) ->
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .clickable { onThemeChange(value) }.padding(vertical = 8.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = themeMode == value,
+                            onClick = { onThemeChange(value) },
+                            colors = RadioButtonDefaults.colors(selectedColor = Accent)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(label, color = TextMain, fontSize = 15.sp)
+                    }
+                }
+            }
+        }
+        item {
+            SettingsCard(title = "Social channels") {
+                socials.forEach { (label, url, icon) ->
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                try {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                } catch (_: Exception) {
+                                    Toast.makeText(context, "Could not open $label", Toast.LENGTH_SHORT).show()
+                                }
+                            }.padding(vertical = 11.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(icon, contentDescription = label, tint = Accent, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Text(label, color = TextMain, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Spacer(Modifier.weight(1f))
+                        Icon(Icons.Default.OpenInNew, contentDescription = "Open $label", tint = TextMuted, modifier = Modifier.size(18.dp))
+                    }
+                }
+                Text(
+                    "Replace the sample links in AppUi.kt with your official channel links.",
+                    color = TextMuted, fontSize = 11.sp
+                )
+            }
+        }
+        item {
+            SettingsCard(title = "Version information") {
+                Text("ON Tunnel", color = TextMain, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                Spacer(Modifier.height(4.dp))
+                Text("Version $version", color = TextMuted, fontSize = 13.sp)
+                Text("Android VPN client", color = TextMuted, fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+@Composable
 private fun SettingsCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(SurfaceC).padding(16.dp)
@@ -1645,7 +1741,8 @@ private fun HomeConfigLogsBottomBar(
     selectedTab: String,
     onHome: () -> Unit,
     onConfig: () -> Unit,
-    onLogs: () -> Unit
+    onLogs: () -> Unit,
+    onMore: () -> Unit = {}
 ) {
     NavigationBar(containerColor = SurfaceC) {
         NavigationBarItem(
@@ -1658,13 +1755,19 @@ private fun HomeConfigLogsBottomBar(
             selected = selectedTab == "CONFIG",
             onClick = onConfig,
             icon = { Icon(Icons.Default.Dns, contentDescription = "Configurations") },
-            label = { Text("CONFIG") }
+            label = { Text("SERVERS") }
         )
         NavigationBarItem(
             selected = selectedTab == "LOGS",
             onClick = onLogs,
             icon = { Icon(Icons.Default.ReceiptLong, contentDescription = "Logs") },
             label = { Text("LOGS") }
+        )
+        NavigationBarItem(
+            selected = selectedTab == "MORE",
+            onClick = onMore,
+            icon = { Icon(Icons.Default.MoreHoriz, contentDescription = "More") },
+            label = { Text("MORE") }
         )
     }
 }
@@ -1687,7 +1790,8 @@ private fun LogsScreen(onBack: () -> Unit, onConfig: () -> Unit) {
                 selectedTab = "LOGS",
                 onHome = onBack,
                 onConfig = onConfig,
-                onLogs = {}
+                onLogs = {},
+                onMore = {}
             )
         },
         topBar = {
