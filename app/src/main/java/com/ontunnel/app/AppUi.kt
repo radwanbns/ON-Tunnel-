@@ -130,11 +130,9 @@ internal fun ONTunnelApp(
     var passwordPurpose by remember { mutableStateOf<String?>(null) }
     var passwordInput by remember { mutableStateOf("") }
     var pendingImportText by remember { mutableStateOf<String?>(null) }
-    var cotImportKeepLocked by remember { mutableStateOf(false) }
     var cotExportEntry by remember { mutableStateOf<ServerEntry?>(null) }
     var cotNoteInput by remember { mutableStateOf("") }
     var cotLockEnabled by remember { mutableStateOf(false) }
-    var cotPasswordInput by remember { mutableStateOf("") }
     var cotExportText by remember { mutableStateOf<String?>(null) }
 
     var dnsMode by remember { mutableStateOf(store.dnsMode) }
@@ -248,24 +246,25 @@ internal fun ONTunnelApp(
     }
 
     fun addImported(imported: List<ServerEntry>) {
-        // Only suppress duplicates among locally added servers.
-        // A locked subscription entry must not prevent the user from importing
-        // the same profile as an independent editable server.
-        val localServers = servers.filter { !it.locked }
+        // Locally imported locked servers are still user-owned and deletable.
+        // Only built-in subscription entries are excluded from duplicate checks.
+        val localServers = servers.filter { !it.subscription }
         val fresh = imported.filterNot { candidate ->
             localServers.any { it.type == candidate.type && it.config == candidate.config }
         }
         if (fresh.isEmpty()) { message("These servers are already imported"); return }
         saveServers(servers + fresh)
-        if (selectedId.isBlank()) select(fresh.first().id)
+        select(fresh.first().id)
         message("Imported ${fresh.size} server(s)")
     }
 
     fun beginCotImport(text: String) {
-        pendingImportText = text
-        passwordInput = ""
-        cotImportKeepLocked = ServerTransfer.isLockedCotFile(text)
-        passwordPurpose = "import_cot"
+        // The .cot file carries its own Locked/Unlocked flag; import directly without a password prompt.
+        try {
+            addImported(listOf(ServerTransfer.importCot(text)))
+        } catch (e: Exception) {
+            message(e.message ?: "Could not import .cot server")
+        }
     }
 
     fun shareServerUri(entry: ServerEntry, locked: Boolean) {
@@ -703,7 +702,6 @@ internal fun ONTunnelApp(
                                                     cotExportEntry = entry
                                                     cotNoteInput = entry.noteHtml
                                                     cotLockEnabled = false
-                                                    cotPasswordInput = ""
                                                 },
                                                 onDuplicate = {
                                                     val copy = entry.copy(
@@ -918,28 +916,16 @@ internal fun ONTunnelApp(
                                     }
                                 }
                             }
-                            if (cotLockEnabled) {
-                                OutlinedTextField(
-                                    value = cotPasswordInput,
-                                    onValueChange = { cotPasswordInput = it },
-                                    label = { Text("Password (minimum 6 characters)") },
-                                    singleLine = true,
-                                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
-                                )
-                            }
                         }
                     },
                     confirmButton = {
                         TextButton(onClick = {
                             try {
                                 val entry = cotExportEntry ?: error("No server selected")
-                                if (cotLockEnabled && cotPasswordInput.length < 6) {
-                                    error("Password must contain at least 6 characters")
-                                }
                                 cotExportText = ServerTransfer.exportCot(
                                     entry,
                                     cotNoteInput,
-                                    if (cotLockEnabled) cotPasswordInput else null
+                                    cotLockEnabled
                                 )
                                 val safeName = entry.name.replace(Regex("[^A-Za-z0-9._-]"), "_")
                                     .trim('_').ifBlank { "ON-Tunnel-server" }
@@ -964,59 +950,33 @@ internal fun ONTunnelApp(
                         passwordInput = ""
                     },
                     containerColor = SurfaceC,
-                    title = { Text(if (passwordPurpose == "import_cot") "Import .cot server" else "Unlock server file", color = TextMain) },
+                    title = { Text("Unlock server file", color = TextMain) },
                     text = {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            val cotLockedSource = passwordPurpose == "import_cot" &&
-                                (pendingImportText?.let { ServerTransfer.isLockedCotFile(it) } == true)
                             Text(
-                                if (passwordPurpose == "import_cot" && cotLockedSource)
-                                    "This .cot file is password-protected. Enter its password, then choose whether the imported server should stay locked."
-                                else if (passwordPurpose == "import_cot")
-                                    "Choose whether this imported .cot server should be locked or unlocked."
-                                else "Enter the password used to lock this ON Tunnel file.",
+                                "Enter the password used to lock this ON Tunnel file.",
                                 color = TextMuted,
                                 fontSize = 13.sp
                             )
-                            if (passwordPurpose == "import_cot") {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(
-                                        checked = cotImportKeepLocked,
-                                        onCheckedChange = { cotImportKeepLocked = it }
-                                    )
-                                    Text("Keep imported server locked", color = TextMain, fontSize = 13.sp)
-                                }
-                            }
-                            if (passwordPurpose != "import_cot" || cotLockedSource) {
-                                OutlinedTextField(
-                                    value = passwordInput,
-                                    onValueChange = { passwordInput = it },
-                                    label = { Text("Password") },
-                                    singleLine = true,
-                                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
-                                )
-                            }
+                            OutlinedTextField(
+                                value = passwordInput,
+                                onValueChange = { passwordInput = it },
+                                label = { Text("Password") },
+                                singleLine = true,
+                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
+                            )
                         }
                     },
                     confirmButton = {
                         TextButton(onClick = {
                             try {
                                 val pending = pendingImportText ?: error("Missing file")
-                                if (passwordPurpose == "import_cot") {
-                                    val needsPassword = ServerTransfer.isLockedCotFile(pending)
-                                    val imported = ServerTransfer.importCot(
-                                        pending,
-                                        if (needsPassword) passwordInput else null
-                                    ).copy(locked = cotImportKeepLocked, subscription = false)
-                                    addImported(listOf(imported))
-                                } else {
-                                    addImported(ServerTransfer.importServers(pending, passwordInput))
-                                }
+                                addImported(ServerTransfer.importServers(pending, passwordInput))
                                 passwordPurpose = null
                                 pendingImportText = null
                                    passwordInput = ""
                             } catch (e: Exception) { message(e.message ?: "Transfer failed") }
-                        }) { Text(if (passwordPurpose == "import_cot") "Import server" else "Unlock and import", color = Accent) }
+                        }) { Text("Unlock and import", color = Accent) }
                     },
                     dismissButton = {
                         TextButton(onClick = {
