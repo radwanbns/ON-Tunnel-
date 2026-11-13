@@ -235,11 +235,11 @@ class ProxyShareService : Service() {
 
     private fun findLanAddress(): Inet4Address? {
         val all = try { NetworkInterface.getNetworkInterfaces().toList() } catch (_: Exception) { emptyList() }
+        // Only bind to Wi-Fi / hotspot interfaces. Never expose a proxy on mobile-data interfaces.
         val ordered = all.filter {
-            try { it.isUp && !it.isLoopback && !it.isVirtual } catch (_: Exception) { false }
-        }.sortedBy {
             val name = it.name.lowercase()
-            if (name.startsWith("wlan") || name.startsWith("ap") || name.contains("wifi")) 0 else 1
+            val isWifi = name.contains("wlan") || name.startsWith("ap") || name.contains("wifi")
+            try { isWifi && it.isUp && !it.isLoopback && !it.isVirtual } catch (_: Exception) { false }
         }
         for (nic in ordered) for (address in nic.inetAddresses) {
             if (address is Inet4Address && address.isSiteLocalAddress && !address.isLoopbackAddress) return address
