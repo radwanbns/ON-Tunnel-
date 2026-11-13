@@ -142,7 +142,14 @@ class MainActivity : ComponentActivity() {
                     if (activeProto == "v2ray" || activeProto == "ssh") activeProto = ""
                 }
                 "error" -> {
-                    val detail = intent.getStringExtra(ONTunnelVpnService.EXTRA_ERROR).orEmpty().take(300)
+                    // Final UI-side safeguard: never show the internal generate_204 probe URL
+                    // or its low-level EOF/Google error text on the Home screen.
+                    val rawDetail = intent.getStringExtra(ONTunnelVpnService.EXTRA_ERROR).orEmpty()
+                    val detail = if (
+                        rawDetail.contains("generate_204", ignoreCase = true) ||
+                        rawDetail.contains("google.com", ignoreCase = true) ||
+                        rawDetail.contains("EOF", ignoreCase = true)
+                    ) "Failed connect to internet" else rawDetail.take(300)
                     AppLogs.add(this@MainActivity, "V2Ray error: $detail")
                     status = VpnStatus.Disconnected
                     statusDetail = null
