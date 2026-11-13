@@ -147,6 +147,7 @@ class MainActivity : ComponentActivity() {
                     status = VpnStatus.Disconnected
                     statusDetail = null
                     if (activeProto == "ssh") { clearSshHooks(); SshTunnelService.stop(this@MainActivity); activeProto = "" }
+                    if (activeProto == "v2ray") activeProto = ""
                     errorMessage = detail
                 }
             }
