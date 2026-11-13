@@ -14,6 +14,9 @@ import go.Seq
 import libv2ray.CoreCallbackHandler
 import libv2ray.CoreController
 import libv2ray.Libv2ray
+import java.util.concurrent.FutureTask
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 class ONTunnelVpnService : VpnService() {
     private var tun: ParcelFileDescriptor? = null
@@ -59,12 +62,23 @@ class ONTunnelVpnService : VpnService() {
             // a temporary core instance and does not depend on the phone's VPN route.
             Seq.setContext(applicationContext)
             Libv2ray.initCoreEnv(filesDir.absolutePath, xudpBaseKey())
-            val serverDelay = Libv2ray.measureOutboundDelay(
-                finalConfig,
-                SERVER_TEST_URL
-            )
+            // Run the outbound check with a hard timeout so a silent/expired server
+            // cannot leave the UI stuck in Connecting forever.
+            val probe = FutureTask<Long> {
+                Libv2ray.measureOutboundDelay(finalConfig, SERVER_TEST_URL)
+            }
+            Thread(probe, "ON-Tunnel-server-check").apply {
+                isDaemon = true
+                start()
+            }
+            val serverDelay = try {
+                probe.get(SERVER_TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            } catch (_: TimeoutException) {
+                probe.cancel(true)
+                error("Failed connect to internet")
+            }
             if (serverDelay < 0L) {
-                error("Server is not responding or its access has expired")
+                error("Failed connect to internet")
             }
 
             val builder = Builder().setSession("ON Tunnel").setMtu(1500)
@@ -101,7 +115,7 @@ class ONTunnelVpnService : VpnService() {
             sendBroadcast(
                 Intent(ACTION_STATE).setPackage(packageName)
                     .putExtra(EXTRA_STATE, "error")
-                    .putExtra(EXTRA_ERROR, e.message ?: "Failed to start connection")
+                    .putExtra(EXTRA_ERROR, safeConnectionError(e))
             )
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -113,6 +127,17 @@ class ONTunnelVpnService : VpnService() {
      * URL-safe Base64 WITHOUT padding (43 characters). Anything else makes the core
      * fail with "BaseKey must be 32 bytes". The key is generated once and persisted.
      */
+    private fun safeConnectionError(error: Exception): String {
+        val detail = error.message.orEmpty()
+        // Keep the internal generate_204 probe private; never expose its URL/EOF text.
+        return if (
+            detail.contains("generate_204", ignoreCase = true) ||
+            detail.contains("google.com", ignoreCase = true) ||
+            detail.contains("EOF", ignoreCase = true)
+        ) "Failed connect to internet"
+        else detail.takeIf { it.isNotBlank() } ?: "Failed to start connection"
+    }
+
     private fun xudpBaseKey(): String {
         val prefs = getSharedPreferences("on_tunnel_core", MODE_PRIVATE)
         val flags = Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP
@@ -194,6 +219,7 @@ class ONTunnelVpnService : VpnService() {
         const val EXTRA_ERROR = "error"
         const val NOTIFICATION_ID = 7001
         private const val SERVER_TEST_URL = "https://www.google.com/generate_204"
+        private const val SERVER_TEST_TIMEOUT_MS = 20_000L
 
         @Volatile
         var running: Boolean = false
