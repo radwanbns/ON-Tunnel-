@@ -1009,7 +1009,7 @@ internal fun ONTunnelApp(
                                 value = cotNoteInput,
                                 onValueChange = { cotNoteInput = it },
                                 label = { Text("HTML note") },
-                                placeholder = { Text("<p>Server note: <a href=\"https://example.com\">Open link</a></p>") },
+                                placeholder = { Text(SecureStrings.exampleNoteHtml) },
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 110.dp, max = 220.dp)
                             )
                             Text("File protection", color = TextMain, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -1193,10 +1193,10 @@ private fun MoreScreen(
         } catch (_: Exception) { "Unknown" }
     }
     val socials = listOf(
-        Triple("Facebook", "https://www.facebook.com/radouanetech1", Icons.Default.Public),
-        Triple("YouTube", "https://youtube.com/@radouane_tech", Icons.Default.PlayCircle),
-        Triple("Telegram", "https://t.me/radouane_tech", Icons.AutoMirrored.Filled.Send),
-        Triple("WhatsApp", "https://whatsapp.com/channel/0029VbEFISc1iUxQigpG0t17", Icons.Default.Chat)
+        Triple("Facebook", SecureStrings.facebookUrl, Icons.Default.Public),
+        Triple("YouTube", SecureStrings.youtubeUrl, Icons.Default.PlayCircle),
+        Triple("Telegram", SecureStrings.telegramUrl, Icons.AutoMirrored.Filled.Send),
+        Triple("WhatsApp", SecureStrings.whatsappUrl, Icons.Default.Chat)
     )
     val proxyPrefs = remember { context.getSharedPreferences(ProxyShareService.PREFS, Context.MODE_PRIVATE) }
     var httpEnabled by remember { mutableStateOf(proxyPrefs.getBoolean("http_running", false)) }
