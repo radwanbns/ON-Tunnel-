@@ -817,7 +817,6 @@ internal fun ONTunnelApp(
             }
 
             if (passwordPurpose != null) {
-                val importing = passwordPurpose == "import_file"
                 AlertDialog(
                     onDismissRequest = {
                         passwordPurpose = null
@@ -848,8 +847,7 @@ internal fun ONTunnelApp(
                                 addImported(ServerTransfer.importServers(pendingImportText ?: error("Missing file"), passwordInput))
                                 passwordPurpose = null
                                 pendingImportText = null
-                                pendingTransferEntry = null
-                                passwordInput = ""
+                                   passwordInput = ""
                                 passwordConfirm = ""
                             } catch (e: Exception) { message(e.message ?: "Transfer failed") }
                         }) { Text("Unlock and import", color = Accent) }
