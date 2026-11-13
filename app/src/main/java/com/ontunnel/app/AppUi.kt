@@ -860,7 +860,23 @@ internal fun ONTunnelApp(
                 }
             }
 
-            if (updateDownloading) {\n                AlertDialog(\n                    onDismissRequest = { },\n                    containerColor = SurfaceC,\n                    title = { Text("Downloading ON Tunnel", fontWeight = FontWeight.Bold) },\n                    text = {\n                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {\n                            LinearProgressIndicator(progress = { updateProgress / 100f }, modifier = Modifier.fillMaxWidth())\n                            Text("$updateProgress%", color = TextMuted, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)\n                            Text("Please keep the app open until the download finishes.", color = TextMuted)\n                        }\n                    },\n                    confirmButton = {}\n                )\n            }\n\n            appUpdate?.takeIf { !showTelegram && !updateDownloading }?.let { update ->
+            if (updateDownloading) {
+                AlertDialog(
+                    onDismissRequest = { },
+                    containerColor = SurfaceC,
+                    title = { Text("Downloading ON Tunnel", fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            LinearProgressIndicator(progress = { updateProgress / 100f }, modifier = Modifier.fillMaxWidth())
+                            Text("$updateProgress%", color = TextMuted, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                            Text("Please keep the app open until the download finishes.", color = TextMuted)
+                        }
+                    },
+                    confirmButton = {}
+                )
+            }
+
+            appUpdate?.takeIf { !showTelegram && !updateDownloading }?.let { update ->
                 AlertDialog(
                     onDismissRequest = onDismissAppUpdate,
                     containerColor = SurfaceC,
