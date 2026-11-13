@@ -132,6 +132,7 @@ internal fun ONTunnelApp(
     var passwordPurpose by remember { mutableStateOf<String?>(null) }
     var passwordInput by remember { mutableStateOf("") }
     var pendingImportText by remember { mutableStateOf<String?>(null) }
+    var pendingShareEntry by remember { mutableStateOf<ServerEntry?>(null) }
     var cotExportEntry by remember { mutableStateOf<ServerEntry?>(null) }
     var cotNoteInput by remember { mutableStateOf("") }
     var cotLockEnabled by remember { mutableStateOf(false) }
@@ -261,17 +262,28 @@ internal fun ONTunnelApp(
     }
 
     fun beginCotImport(text: String) {
-        // The .cot file carries its own Locked/Unlocked flag; import directly without a password prompt.
-        try {
-            addImported(listOf(ServerTransfer.importCot(text)))
-        } catch (e: Exception) {
-            message(e.message ?: "Could not import .cot server")
+        if (ServerTransfer.isLockedCotFile(text)) {
+            pendingImportText = text
+            passwordInput = ""
+            passwordPurpose = "import_cot"
+            return
         }
+        try { addImported(listOf(ServerTransfer.importCot(text))) }
+        catch (e: Exception) { message(e.message ?: "Could not import .cot server") }
     }
 
     fun shareServerUri(entry: ServerEntry, locked: Boolean) {
-        try { val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager; cm.setPrimaryClip(ClipData.newPlainText("URI", ServerTransfer.shareUri(entry, locked))); Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show() }
-        catch (e: Exception) { message(e.message ?: "This server cannot be copied as URI") }
+        if (locked) {
+            pendingShareEntry = entry
+            passwordInput = ""
+            passwordPurpose = "export_uri"
+            return
+        }
+        try {
+            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("URI", ServerTransfer.shareUri(entry, false)))
+            Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) { message(e.message ?: "This server cannot be copied as URI") }
     }
 
     fun shareServerJson(entry: ServerEntry) {
@@ -293,6 +305,11 @@ internal fun ONTunnelApp(
                 }
                 OvpnConfigTools.looksLikeOvpn(text) -> {
                     openOvpnEditorFromText(text)
+                }
+                ServerTransfer.isLockedUri(text) -> {
+                    pendingImportText = text
+                    passwordInput = ""
+                    passwordPurpose = "import_uri"
                 }
                 ServerTransfer.isLockedFile(text) -> {
                     pendingImportText = text
@@ -324,6 +341,10 @@ internal fun ONTunnelApp(
                     beginCotImport(text)
                 } else if (OvpnConfigTools.looksLikeOvpn(text)) {
                     openOvpnEditorFromText(text, displayName(context, uri)?.substringBeforeLast('.'))
+                } else if (ServerTransfer.isLockedUri(text)) {
+                    pendingImportText = text
+                    passwordInput = ""
+                    passwordPurpose = "import_uri"
                 } else if (ServerTransfer.isLockedFile(text)) {
                     pendingImportText = text
                     passwordInput = ""
@@ -356,6 +377,10 @@ internal fun ONTunnelApp(
                 beginCotImport(text)
             } else if (OvpnConfigTools.looksLikeOvpn(text)) {
                 openOvpnEditorFromText(text, displayName(context, uri)?.substringBeforeLast('.'))
+            } else if (ServerTransfer.isLockedUri(text)) {
+                pendingImportText = text
+                passwordInput = ""
+                passwordPurpose = "import_uri"
             } else if (ServerTransfer.isLockedFile(text)) {
                 pendingImportText = text
                 passwordInput = ""
@@ -886,6 +911,11 @@ internal fun ONTunnelApp(
                             } catch (e: Exception) {
                                 Toast.makeText(context, e.message ?: "Invalid .cot file", Toast.LENGTH_LONG).show()
                             }
+                        } else if (ServerTransfer.isLockedUri(text)) {
+                            pendingImportText = text
+                            passwordInput = ""
+                            passwordPurpose = "import_uri"
+                            showPaste = false
                         } else if (ServerTransfer.isLockedFile(text)) {
                             pendingImportText = text
                             passwordInput = ""
