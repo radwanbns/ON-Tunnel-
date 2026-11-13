@@ -54,6 +54,19 @@ class ONTunnelVpnService : VpnService() {
             stopCore()
             // New Xray removed allowInsecure: convert it to certificate pinning (done before the VPN is up).
             val finalConfig = TlsInsecureCompat.prepare(config)
+            // Initialize Xray and test this server ONCE before creating the VPN.
+            // This mirrors V2RayNG's outbound-delay check: the probe is performed by
+            // a temporary core instance and does not depend on the phone's VPN route.
+            Seq.setContext(applicationContext)
+            Libv2ray.initCoreEnv(filesDir.absolutePath, xudpBaseKey())
+            val serverDelay = Libv2ray.measureOutboundDelay(
+                finalConfig,
+                SERVER_TEST_URL
+            )
+            if (serverDelay < 0L) {
+                error("Server is not responding or its access has expired")
+            }
+
             val builder = Builder().setSession("ON Tunnel").setMtu(1500)
                 .addAddress("10.111.0.1", 32).addRoute("0.0.0.0", 0)
                 .addDnsServer("1.1.1.1").addDnsServer("8.8.8.8")
@@ -62,8 +75,6 @@ class ONTunnelVpnService : VpnService() {
             } catch (_: Exception) {
             }
             tun = builder.establish() ?: error("Failed to create VPN interface")
-            Seq.setContext(applicationContext)
-            Libv2ray.initCoreEnv(filesDir.absolutePath, xudpBaseKey())
             val callback = object : CoreCallbackHandler {
                 override fun startup(): Long = 0
                 override fun shutdown(): Long = 0
@@ -182,6 +193,7 @@ class ONTunnelVpnService : VpnService() {
         const val EXTRA_STATE = "state"
         const val EXTRA_ERROR = "error"
         const val NOTIFICATION_ID = 7001
+        private const val SERVER_TEST_URL = "https://www.google.com/generate_204"
 
         @Volatile
         var running: Boolean = false
