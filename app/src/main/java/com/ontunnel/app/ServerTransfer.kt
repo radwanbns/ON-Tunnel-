@@ -205,8 +205,16 @@ object ServerTransfer {
             }
             return importServers(raw)
         }
+        // Treat plain text as an unsupported format instead of recursively
+        // parsing the same single line until the app runs out of stack space.
+        val lines = raw.lines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") }
+        require(lines.isNotEmpty()) { "No supported servers found" }
+        require(lines.size > 1) { "No supported servers found in clipboard" }
+
         val entries = mutableListOf<ServerEntry>()
-        raw.lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }.forEach { line ->
+        for (line in lines) {
             entries += importText(line)
         }
         require(entries.isNotEmpty()) { "No supported servers found" }
