@@ -68,6 +68,7 @@ private const val OVPN_STUCK_MS = 30_000L
 
 class MainActivity : ComponentActivity() {
     private var pendingConfig: String? = null
+    private var incomingServerFileUri by mutableStateOf<Uri?>(null)
     private var status by mutableStateOf(if (ONTunnelVpnService.running) VpnStatus.Connected else VpnStatus.Disconnected)
     private var errorMessage by mutableStateOf<String?>(null)
     private var availableAppUpdate by mutableStateOf<AppUpdateInfo?>(null)
@@ -222,6 +223,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         tamperDetected = false
+        if (intent?.action == Intent.ACTION_VIEW) incomingServerFileUri = intent.data
         val savedProto = getSharedPreferences("on_tunnel_core", MODE_PRIVATE).getString("active_proto", "").orEmpty()
         activeProto = if (ONTunnelVpnService.running) (if (SshTunnelService.running) "ssh" else "v2ray") else savedProto
         if (activeProto == "openvpn") {
@@ -270,7 +272,9 @@ class MainActivity : ComponentActivity() {
                 onOpenOvpnStore = ::openOvpnStore,
                 appUpdate = availableAppUpdate,
                 onDownloadAppUpdate = ::startAppUpdateDownload,
-                onDismissAppUpdate = { availableAppUpdate = null }
+                onDismissAppUpdate = { availableAppUpdate = null },
+                incomingServerFileUri = incomingServerFileUri,
+                onIncomingFileHandled = { incomingServerFileUri = null }
             )
         }
     }
@@ -596,6 +600,12 @@ class MainActivity : ComponentActivity() {
             } catch (_: ActivityNotFoundException) { }
         }
         Toast.makeText(this, "Install \"OpenVPN for Android\" from Google Play or F-Droid", Toast.LENGTH_LONG).show()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.action == Intent.ACTION_VIEW) incomingServerFileUri = intent.data
     }
 
     override fun onDestroy() {
