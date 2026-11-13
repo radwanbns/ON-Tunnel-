@@ -10,6 +10,10 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Base64
 import android.widget.Toast
+import android.text.Html
+import android.text.method.LinkMovementMethod
+import android.widget.TextView
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -126,7 +130,11 @@ internal fun ONTunnelApp(
     var passwordPurpose by remember { mutableStateOf<String?>(null) }
     var passwordInput by remember { mutableStateOf("") }
     var pendingImportText by remember { mutableStateOf<String?>(null) }
-    var exportText by remember { mutableStateOf<String?>(null) }
+    var cotExportEntry by remember { mutableStateOf<ServerEntry?>(null) }
+    var cotNoteInput by remember { mutableStateOf("") }
+    var cotLockEnabled by remember { mutableStateOf(false) }
+    var cotPasswordInput by remember { mutableStateOf("") }
+    var cotExportText by remember { mutableStateOf<String?>(null) }
 
     var dnsMode by remember { mutableStateOf(store.dnsMode) }
     var customDns by remember { mutableStateOf(store.customDns) }
@@ -323,13 +331,13 @@ internal fun ONTunnelApp(
             } else addImported(ServerTransfer.importText(text))
         } catch (e: Exception) { message(e.message ?: "Could not import server file") }
     }
-    val exportFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
+    val cotExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.ontunnel.cot")) { uri: Uri? ->
         if (uri != null) try {
-            val data = exportText ?: error("Nothing to export")
+            val data = cotExportText ?: error("Nothing to export")
             context.contentResolver.openOutputStream(uri)?.use { it.write(data.toByteArray(Charsets.UTF_8)) } ?: error("Cannot create file")
-            message("Server file exported")
+            message("ON Tunnel server file exported")
         } catch (e: Exception) { message(e.message ?: "Export failed") }
-        exportText = null
+        cotExportText = null
     }
     fun openEditor(e: ServerEntry) {
         if (e.isSsh) {
