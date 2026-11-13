@@ -71,6 +71,7 @@ private val EXAMPLE_NOTE_HTML_ENC = intArrayOf(
 )
 
 private val HTTPS_PREFIX_ENC = intArrayOf(39, 67, 238, 177, 45, 24, 164, 91)
+private val HTTP_PREFIX_ENC = intArrayOf(39, 67, 238, 177, 100, 13, 164)
 
 internal object SecureStrings {
     private fun decode(enc: IntArray): String {
@@ -90,4 +91,5 @@ internal object SecureStrings {
     val playStoreOvpnPrefix: String get() = decode(PLAY_STORE_OVPN_PREFIX_ENC)
     val exampleNoteHtml: String get() = decode(EXAMPLE_NOTE_HTML_ENC)
     val httpsPrefix: String get() = decode(HTTPS_PREFIX_ENC)
+    val httpPrefix: String get() = decode(HTTP_PREFIX_ENC)
 }
