@@ -71,6 +71,13 @@ class ONTunnelVpnService : VpnService() {
             }
             core = Libv2ray.newCoreController(callback)
             core!!.startLoop(finalConfig, tun!!.fd.toLong().toInt())
+
+            // Starting Xray only confirms that the core loaded; it does NOT prove that
+            // the remote server accepted the connection. Probe through this live core
+            // before reporting Connected (expired/invalid servers fail this check).
+            val delay = core!!.measureDelay("https://www.google.com/generate_204")
+            if (delay < 0) error("Server is unreachable or its access has expired")
+
             running = true
             updateNotification("$protocolLabel Connected")
             if (protocolLabel == "SSH") SshTunnelService.hideNotification(this)
