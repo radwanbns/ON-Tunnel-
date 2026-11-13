@@ -870,7 +870,7 @@ internal fun ONTunnelApp(
                         TextButton(onClick = {
                             try {
                                 if (importing) {
-                                    addImported(ServerTransfer.import(pendingImportText ?: error("Missing file"), passwordInput))
+                                    addImported(ServerTransfer.importServers(pendingImportText ?: error("Missing file"), passwordInput))
                                 } else {
                                     require(passwordInput.length >= 6) { "Password must contain at least 6 characters" }
                                     require(passwordInput == passwordConfirm) { "Passwords do not match" }
