@@ -133,6 +133,7 @@ internal fun ONTunnelApp(
     var passwordInput by remember { mutableStateOf("") }
     var pendingImportText by remember { mutableStateOf<String?>(null) }
     var pendingShareEntry by remember { mutableStateOf<ServerEntry?>(null) }
+    var pendingCotExportEntry by remember { mutableStateOf<ServerEntry?>(null) }
     var cotExportEntry by remember { mutableStateOf<ServerEntry?>(null) }
     var cotNoteInput by remember { mutableStateOf("") }
     var cotLockEnabled by remember { mutableStateOf(false) }
@@ -996,15 +997,18 @@ internal fun ONTunnelApp(
                         TextButton(onClick = {
                             try {
                                 val entry = cotExportEntry ?: error("No server selected")
-                                cotExportText = ServerTransfer.exportCot(
-                                    entry,
-                                    cotNoteInput,
-                                    cotLockEnabled
-                                )
-                                val safeName = entry.name.replace(Regex("[^A-Za-z0-9._-]"), "_")
-                                    .trim('_').ifBlank { "ON-Tunnel-server" }
-                                cotExportPicker.launch("$safeName.cot")
-                                cotExportEntry = null
+                                if (cotLockEnabled) {
+                                    pendingCotExportEntry = entry
+                                    passwordInput = ""
+                                    passwordPurpose = "export_cot"
+                                    cotExportEntry = null
+                                } else {
+                                    cotExportText = ServerTransfer.exportCot(entry, cotNoteInput, false)
+                                    val safeName = entry.name.replace(Regex("[^A-Za-z0-9._-]"), "_")
+                                        .trim('_').ifBlank { "ON-Tunnel-server" }
+                                    cotExportPicker.launch("$safeName.cot")
+                                    cotExportEntry = null
+                                }
                             } catch (e: Exception) {
                                 message(e.message ?: "Export failed")
                             }
@@ -1021,14 +1025,27 @@ internal fun ONTunnelApp(
                     onDismissRequest = {
                         passwordPurpose = null
                         pendingImportText = null
+                        pendingShareEntry = null
+                        pendingCotExportEntry = null
                         passwordInput = ""
                     },
                     containerColor = SurfaceC,
-                    title = { Text("Unlock server file", color = TextMain) },
+                    title = {
+                        Text(
+                            when (passwordPurpose) {
+                                "export_uri" -> "Set password for locked URI"
+                                "export_cot" -> "Set password for locked .cot"
+                                else -> "Unlock server"
+                            },
+                            color = TextMain
+                        )
+                    },
                     text = {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
-                                "Enter the password used to lock this ON Tunnel file.",
+                                if (passwordPurpose == "export_uri" || passwordPurpose == "export_cot")
+                                    "Choose a password with at least 6 characters. Share it separately with the recipient."
+                                else "Enter the password chosen by the server owner.",
                                 color = TextMuted,
                                 fontSize = 13.sp
                             )
@@ -1044,13 +1061,44 @@ internal fun ONTunnelApp(
                     confirmButton = {
                         TextButton(onClick = {
                             try {
-                                val pending = pendingImportText ?: error("Missing file")
-                                addImported(ServerTransfer.importServers(pending, passwordInput))
+                                when (passwordPurpose) {
+                                    "export_uri" -> {
+                                        val entry = pendingShareEntry ?: error("No server selected")
+                                        val encryptedUri = ServerTransfer.shareUri(entry, true, passwordInput)
+                                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        cm.setPrimaryClip(ClipData.newPlainText("URI", encryptedUri))
+                                        Toast.makeText(context, "Encrypted locked URI copied", Toast.LENGTH_SHORT).show()
+                                        pendingShareEntry = null
+                                    }
+                                    "export_cot" -> {
+                                        val entry = pendingCotExportEntry ?: error("No server selected")
+                                        cotExportText = ServerTransfer.exportCot(entry, cotNoteInput, true, passwordInput)
+                                        val safeName = entry.name.replace(Regex("[^A-Za-z0-9._-]"), "_")
+                                            .trim('_').ifBlank { "ON-Tunnel-server" }
+                                        cotExportPicker.launch("$safeName.cot")
+                                        pendingCotExportEntry = null
+                                    }
+                                    else -> {
+                                        val pending = pendingImportText ?: error("Missing file")
+                                        val imported = when (passwordPurpose) {
+                                            "import_uri" -> ServerTransfer.importText(pending, passwordInput)
+                                            "import_cot" -> listOf(ServerTransfer.importCot(pending, passwordInput))
+                                            else -> ServerTransfer.importServers(pending, passwordInput, preserveLock = true)
+                                        }
+                                        addImported(imported)
+                                        pendingImportText = null
+                                    }
+                                }
                                 passwordPurpose = null
-                                pendingImportText = null
-                                   passwordInput = ""
+                                passwordInput = ""
                             } catch (e: Exception) { message(e.message ?: "Transfer failed") }
-                        }) { Text("Unlock and import", color = Accent) }
+                        }) {
+                            Text(
+                                if (passwordPurpose == "export_uri" || passwordPurpose == "export_cot")
+                                    "Encrypt and continue" else "Unlock and import",
+                                color = Accent
+                            )
+                        }
                     },
                     dismissButton = {
                         TextButton(onClick = {
