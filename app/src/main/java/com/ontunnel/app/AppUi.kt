@@ -274,6 +274,16 @@ internal fun ONTunnelApp(
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val text = cm.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()?.trim().orEmpty()
         if (text.isBlank()) { message("Clipboard is empty"); return }
+        if (ServerTransfer.isCotFile(text)) {
+            try {
+                if (ServerTransfer.isLockedCotFile(text)) {
+                    pendingImportText = text
+                    passwordInput = ""
+                    passwordPurpose = "import_cot"
+                } else addImported(listOf(ServerTransfer.importCot(text)))
+            } catch (e: Exception) { message(e.message ?: "Could not import .cot file") }
+            return
+        }
         if (OvpnConfigTools.looksLikeOvpn(text)) { openOvpnEditorFromText(text); return }
         if (ServerTransfer.isLockedFile(text)) {
             pendingImportText = text
@@ -292,7 +302,13 @@ internal fun ONTunnelApp(
                 val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Cannot read file")
                 if (bytes.size > 5_000_000) error("Server file is too large")
                 val text = String(bytes, Charsets.UTF_8)
-                if (OvpnConfigTools.looksLikeOvpn(text)) {
+                if (ServerTransfer.isCotFile(text)) {
+                    if (ServerTransfer.isLockedCotFile(text)) {
+                        pendingImportText = text
+                        passwordInput = ""
+                        passwordPurpose = "import_cot"
+                    } else addImported(listOf(ServerTransfer.importCot(text)))
+                } else if (OvpnConfigTools.looksLikeOvpn(text)) {
                     openOvpnEditorFromText(text, displayName(context, uri)?.substringBeforeLast('.'))
                 } else if (ServerTransfer.isLockedFile(text)) {
                     pendingImportText = text
@@ -322,7 +338,13 @@ internal fun ONTunnelApp(
             val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Cannot read file")
             if (bytes.size > 5_000_000) error("Server file is too large")
             val text = String(bytes, Charsets.UTF_8)
-            if (OvpnConfigTools.looksLikeOvpn(text)) {
+            if (ServerTransfer.isCotFile(text)) {
+                if (ServerTransfer.isLockedCotFile(text)) {
+                    pendingImportText = text
+                    passwordInput = ""
+                    passwordPurpose = "import_cot"
+                } else addImported(listOf(ServerTransfer.importCot(text)))
+            } else if (OvpnConfigTools.looksLikeOvpn(text)) {
                 openOvpnEditorFromText(text, displayName(context, uri)?.substringBeforeLast('.'))
             } else if (ServerTransfer.isLockedFile(text)) {
                 pendingImportText = text
