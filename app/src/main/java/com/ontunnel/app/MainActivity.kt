@@ -187,6 +187,7 @@ class MainActivity : ComponentActivity() {
             if (completedId != updateDownloadId) return
             getSharedPreferences("app_update", MODE_PRIVATE).edit().remove("download_id").apply()
             updateDownloadId = -1L
+            mainHandler.removeCallbacks(updateProgressPoll)
             val manager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
             val query = DownloadManager.Query().setFilterById(completedId)
             manager.query(query).use { cursor ->
@@ -230,6 +231,10 @@ class MainActivity : ComponentActivity() {
             updateDownloadId = (getSystemService(DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
             getSharedPreferences("app_update", MODE_PRIVATE).edit()
                 .putLong("download_id", updateDownloadId).apply()
+            updateProgress = 0
+            updateDownloading = true
+            mainHandler.removeCallbacks(updateProgressPoll)
+            mainHandler.post(updateProgressPoll)
             availableAppUpdate = null
 
         } catch (e: Exception) {
@@ -288,6 +293,10 @@ class MainActivity : ComponentActivity() {
         )
         updateDownloadId = getSharedPreferences("app_update", MODE_PRIVATE)
             .getLong("download_id", -1L)
+        if (updateDownloadId >= 0L) {
+            updateDownloading = true
+            mainHandler.post(updateProgressPoll)
+        }
         Thread {
             val update = AppUpdater.checkForUpdate(this)
             if (update != null) runOnUiThread { availableAppUpdate = update }
@@ -650,6 +659,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(updateProgressPoll)
         mainHandler.removeCallbacks(ovpnTimeout)
         clearRelayHooks()
         clearSshHooks()
