@@ -1711,7 +1711,7 @@ private fun displayName(context: Context, uri: Uri): String? = try {
 private fun isSubscriptionConfigured(): Boolean =
     SUBSCRIPTION_URL.isNotBlank() &&
         !SUBSCRIPTION_URL.contains("example.com") &&
-        (SUBSCRIPTION_URL.startsWith("http://") || SUBSCRIPTION_URL.startsWith("https://"))
+        (SUBSCRIPTION_URL.startsWith(SecureStrings.httpPrefix) || SUBSCRIPTION_URL.startsWith(SecureStrings.httpsPrefix))
 
 /** Supports plain text (one link per line) and base64-encoded subscription bodies. */
 private fun fetchAndParseSubscription(url: String): Result<List<ServerEntry>> = runCatching {
