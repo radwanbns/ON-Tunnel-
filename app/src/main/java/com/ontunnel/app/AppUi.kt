@@ -590,6 +590,18 @@ internal fun ONTunnelApp(
                                         onClick = ::toggleConnect
                                     )
                                 }
+                                // The imported .cot HTML note belongs in HOME's free content area,
+                                // not inside the server row in CONFIG.
+                                if (!selected?.noteHtml.isNullOrBlank()) {
+                                    item(key = "selected_server_note") {
+                                        Box(
+                                            Modifier.fillMaxWidth()
+                                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                                        ) {
+                                            HtmlServerNote(selected!!.noteHtml)
+                                        }
+                                    }
+                                }
                                 if (tampered) {
                                     item(key = "integrity_error") {
                                         Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
@@ -1380,7 +1392,6 @@ private fun ServerCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (entry.noteHtml.isNotBlank()) HtmlServerNote(entry.noteHtml)
             }
             if (!entry.subscription) {
                 Box {
