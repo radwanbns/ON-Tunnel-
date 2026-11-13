@@ -237,8 +237,8 @@ internal fun ONTunnelApp(
         } catch (e: Exception) { message(e.message ?: "No sharing app found") }
     }
 
-    fun shareServerUri(entry: ServerEntry) {
-        try { shareText("Share ${entry.name} URI", ServerTransfer.shareUri(entry)) }
+    fun shareServerUri(entry: ServerEntry, locked: Boolean) {
+        try { shareText("Share ${entry.name} URI", ServerTransfer.shareUri(entry, locked)) }
         catch (e: Exception) { message(e.message ?: "This server cannot be shared as URI") }
     }
 
@@ -667,7 +667,7 @@ internal fun ONTunnelApp(
                                                     message("Selected: ${entry.name}")
                                                 },
                                                 onEdit = { openEditor(entry) },
-                                                onShareUri = { shareServerUri(entry) },
+                                                onShareUri = { locked -> shareServerUri(entry, locked) },
                                                 onShareJson = { shareServerJson(entry) },
                                                 onShareLockedJson = {
                                                     pendingTransferEntry = entry
@@ -1238,7 +1238,7 @@ private fun ServerCard(
     selected: Boolean,
     onSelect: () -> Unit,
     onEdit: () -> Unit,
-    onShareUri: () -> Unit,
+    onShareUri: (Boolean) -> Unit,
     onShareJson: () -> Unit,
     onShareLockedJson: () -> Unit,
     onDuplicate: () -> Unit,
@@ -1288,42 +1288,19 @@ private fun ServerCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            Box {
-                IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.MoreVert, "Options", tint = TextMuted, modifier = Modifier.size(18.dp))
-                }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    if (!entry.locked) DropdownMenuItem(
-                        text = { Text("Edit") },
-                        leadingIcon = { Icon(Icons.Default.Edit, null) },
-                        onClick = { menu = false; onEdit() }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Share URI") },
-                        leadingIcon = { Icon(Icons.Default.Share, null) },
-                        onClick = { menu = false; onShareUri() }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Share JSON") },
-                        leadingIcon = { Icon(Icons.Default.Code, null) },
-                        onClick = { menu = false; onShareJson() }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Share locked JSON") },
-                        leadingIcon = { Icon(Icons.Default.Lock, null) },
-                        onClick = { menu = false; onShareLockedJson() }
-                    )
-                    if (!entry.locked) {
-                        DropdownMenuItem(
-                            text = { Text("Duplicate") },
-                            leadingIcon = { Icon(Icons.Default.Add, null) },
-                            onClick = { menu = false; onDuplicate() }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Delete", color = RedErr) },
-                            leadingIcon = { Icon(Icons.Default.Delete, null, tint = RedErr) },
-                            onClick = { menu = false; onDelete() }
-                        )
+            if (!entry.locked) {
+                Box {
+                    IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.MoreVert, "Options", tint = TextMuted, modifier = Modifier.size(18.dp))
+                    }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text("Edit") }, leadingIcon = { Icon(Icons.Default.Edit, null) }, onClick = { menu = false; onEdit() })
+                        DropdownMenuItem(text = { Text("Share URI (locked)") }, leadingIcon = { Icon(Icons.Default.Lock, null) }, onClick = { menu = false; onShareUri(true) })
+                        DropdownMenuItem(text = { Text("Share URI (unlocked)") }, leadingIcon = { Icon(Icons.Default.Share, null) }, onClick = { menu = false; onShareUri(false) })
+                        DropdownMenuItem(text = { Text("Share JSON") }, leadingIcon = { Icon(Icons.Default.Code, null) }, onClick = { menu = false; onShareJson() })
+                        DropdownMenuItem(text = { Text("Share locked JSON") }, leadingIcon = { Icon(Icons.Default.Lock, null) }, onClick = { menu = false; onShareLockedJson() })
+                        DropdownMenuItem(text = { Text("Duplicate") }, leadingIcon = { Icon(Icons.Default.Add, null) }, onClick = { menu = false; onDuplicate() })
+                        DropdownMenuItem(text = { Text("Delete", color = RedErr) }, leadingIcon = { Icon(Icons.Default.Delete, null, tint = RedErr) }, onClick = { menu = false; onDelete() })
                     }
                 }
             }
