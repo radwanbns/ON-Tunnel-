@@ -106,6 +106,8 @@ internal fun ONTunnelApp(
     onOpenOvpnStore: () -> Unit,
     appUpdate: AppUpdateInfo?,
     onDownloadAppUpdate: (AppUpdateInfo) -> Unit,
+    updateDownloading: Boolean,
+    updateProgress: Int,
     onDismissAppUpdate: () -> Unit,
     incomingServerFileUri: Uri?,
     onIncomingFileHandled: () -> Unit
