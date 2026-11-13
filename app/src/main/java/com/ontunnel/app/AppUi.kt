@@ -699,6 +699,12 @@ internal fun ONTunnelApp(
                                                 onEdit = { openEditor(entry) },
                                                 onShareUri = { locked -> shareServerUri(entry, locked) },
                                                 onShareJson = { shareServerJson(entry) },
+                                                onExportCot = {
+                                                    cotExportEntry = entry
+                                                    cotNoteInput = entry.noteHtml
+                                                    cotLockEnabled = false
+                                                    cotPasswordInput = ""
+                                                },
                                                 onDuplicate = {
                                                     val copy = entry.copy(
                                                         id = java.util.UUID.randomUUID().toString(),
@@ -1254,6 +1260,7 @@ private fun ServerCard(
     onEdit: () -> Unit,
     onShareUri: (Boolean) -> Unit,
     onShareJson: () -> Unit,
+    onExportCot: () -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -1292,15 +1299,17 @@ private fun ServerCard(
                 Icon(Icons.Default.Lock, "Locked", tint = TextMuted, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
             }
-            Text(
-                entry.name,
-                color = TextMain,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    entry.name,
+                    color = TextMain,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (entry.noteHtml.isNotBlank()) HtmlServerNote(entry.noteHtml)
+            }
             if (!entry.subscription) {
                 Box {
                     IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) {
@@ -1311,6 +1320,7 @@ private fun ServerCard(
                         if (!entry.locked) DropdownMenuItem(text = { Text("Share URI (locked)") }, leadingIcon = { Icon(Icons.Default.Lock, null) }, onClick = { menu = false; onShareUri(true) })
                         if (!entry.locked) DropdownMenuItem(text = { Text("Share URI (unlocked)") }, leadingIcon = { Icon(Icons.Default.Share, null) }, onClick = { menu = false; onShareUri(false) })
                         if (!entry.locked) DropdownMenuItem(text = { Text("Share JSON") }, leadingIcon = { Icon(Icons.Default.Code, null) }, onClick = { menu = false; onShareJson() })
+                        if (!entry.locked) DropdownMenuItem(text = { Text("Export server (.cot)") }, leadingIcon = { Icon(Icons.Default.FileDownload, null) }, onClick = { menu = false; onExportCot() })
                         if (!entry.locked) DropdownMenuItem(text = { Text("Duplicate") }, leadingIcon = { Icon(Icons.Default.Add, null) }, onClick = { menu = false; onDuplicate() })
                         DropdownMenuItem(text = { Text("Delete", color = RedErr) }, leadingIcon = { Icon(Icons.Default.Delete, null, tint = RedErr) }, onClick = { menu = false; onDelete() })
                     }
