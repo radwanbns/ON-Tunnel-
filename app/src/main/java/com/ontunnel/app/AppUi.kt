@@ -1175,7 +1175,7 @@ private fun MoreScreen(
         Triple("YouTube", "https://youtube.com/@your_channel", Icons.Default.PlayCircle),
         Triple("Telegram", "https://t.me/your_channel", Icons.AutoMirrored.Filled.Send),
         Triple("WhatsApp", "https://wa.me/0000000000", Icons.Default.Chat),
-        Triple("Facebook", "https://facebook.com/your_page", Icons.Default.Facebook)
+        Triple("Facebook", "https://facebook.com/your_page", Icons.Default.Public)
     )
     Scaffold(
         containerColor = Bg,
