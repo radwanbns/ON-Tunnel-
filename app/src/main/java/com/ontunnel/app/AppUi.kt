@@ -252,6 +252,12 @@ internal fun ONTunnelApp(
         val text = cm.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()?.trim().orEmpty()
         if (text.isBlank()) { message("Clipboard is empty"); return }
         if (OvpnConfigTools.looksLikeOvpn(text)) { openOvpnEditorFromText(text); return }
+        if (ServerTransfer.isLockedFile(text)) {
+            pendingImportText = text
+            passwordInput = ""
+            passwordPurpose = "import_file"
+            return
+        }
         try { addImported(ServerTransfer.importText(text)) }
         catch (e: Exception) { message(e.message ?: "No supported servers found in clipboard") }
     }
@@ -797,6 +803,11 @@ internal fun ONTunnelApp(
                         if (OvpnConfigTools.looksLikeOvpn(text)) {
                             showPaste = false
                             openOvpnEditorFromText(text)
+                        } else if (ServerTransfer.isLockedFile(text)) {
+                            pendingImportText = text
+                            passwordInput = ""
+                            passwordPurpose = "import_file"
+                            showPaste = false
                         } else {
                             try {
                                 addImported(ServerTransfer.importText(text))
