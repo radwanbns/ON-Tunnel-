@@ -438,14 +438,16 @@ internal fun ONTunnelApp(
                         horizontalDrag += dragAmount
                     },
                     onDragEnd = {
-                        if (horizontalDrag < -60f) {
+                        // RTL navigation: swipe right to move HOME → SERVERS → LOGS → MORE.
+                        // Swipe left moves back through the same pages.
+                        if (horizontalDrag > 60f) {
                             currentTab = when (currentTab) {
                                 "HOME" -> "CONFIG"
                                 "CONFIG" -> "LOGS"
                                 "LOGS" -> "MORE"
                                 else -> "MORE"
                             }
-                        } else if (horizontalDrag > 60f) {
+                        } else if (horizontalDrag < -60f) {
                             currentTab = when (currentTab) {
                                 "MORE" -> "LOGS"
                                 "LOGS" -> "CONFIG"
@@ -1173,10 +1175,10 @@ private fun MoreScreen(
         } catch (_: Exception) { "Unknown" }
     }
     val socials = listOf(
-        Triple("YouTube", "https://youtube.com/@your_channel", Icons.Default.PlayCircle),
-        Triple("Telegram", "https://t.me/your_channel", Icons.AutoMirrored.Filled.Send),
-        Triple("WhatsApp", "https://wa.me/0000000000", Icons.Default.Chat),
-        Triple("Facebook", "https://facebook.com/your_page", Icons.Default.Public)
+        Triple("Facebook", "https://www.facebook.com/radouanetech1", Icons.Default.Public),
+        Triple("YouTube", "https://youtube.com/@radouane_tech", Icons.Default.PlayCircle),
+        Triple("Telegram", "https://t.me/radouane_tech", Icons.AutoMirrored.Filled.Send),
+        Triple("WhatsApp", "https://whatsapp.com/channel/0029VbEFISc1iUxQigpG0t17", Icons.Default.Chat)
     )
     val proxyPrefs = remember { context.getSharedPreferences(ProxyShareService.PREFS, Context.MODE_PRIVATE) }
     var httpEnabled by remember { mutableStateOf(proxyPrefs.getBoolean("http_running", false)) }
@@ -1345,7 +1347,7 @@ private fun MoreScreen(
                     }
                 }
                 Text(
-                    "Replace the sample links in AppUi.kt with your official channel links.",
+                    "Follow ON Tunnel on Facebook, YouTube, Telegram and WhatsApp.",
                     color = TextMuted, fontSize = 11.sp
                 )
             }
