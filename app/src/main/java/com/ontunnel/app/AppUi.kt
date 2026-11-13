@@ -531,7 +531,10 @@ internal fun ONTunnelApp(
                     onThemeChange = {
                         themeMode = it
                         store.themeMode = it
-                    }
+                    },
+                    onHome = { currentTab = "HOME" },
+                    onServers = { currentTab = "CONFIG" },
+                    onLogs = { currentTab = "LOGS" }
                 )
             } else {
                 val selected = servers.firstOrNull { it.id == selectedId }
@@ -1161,8 +1164,29 @@ private fun SettingsPage(
     customDns: String,
     onCustomDnsChange: (String) -> Unit
 ) {
+    Scaffold(
+        containerColor = Bg,
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text("More", fontWeight = FontWeight.Bold) },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = Color.Transparent,
+                    titleContentColor = TextMain
+                )
+            )
+        },
+        bottomBar = {
+            HomeConfigLogsBottomBar(
+                selectedTab = "MORE",
+                onHome = onHome,
+                onConfig = onServers,
+                onLogs = onLogs,
+                onMore = {}
+            )
+        }
+    ) { innerPadding ->
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().padding(innerPadding),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -1253,14 +1277,17 @@ private fun SettingsPage(
 @Composable
 private fun MoreScreen(
     themeMode: String,
-    onThemeChange: (String) -> Unit
+    onThemeChange: (String) -> Unit,
+    onHome: () -> Unit,
+    onServers: () -> Unit,
+    onLogs: () -> Unit
 ) {
     val context = LocalContext.current
     val version = remember {
         try {
             val info = context.packageManager.getPackageInfo(context.packageName, 0)
             val code = if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
-            "\${info.versionName ?: "Unknown"} ($code)"
+            "${info.versionName ?: "Unknown"} ($code)"
         } catch (_: Exception) { "Unknown" }
     }
     val socials = listOf(
@@ -1331,6 +1358,7 @@ private fun MoreScreen(
                 Text("Android VPN client", color = TextMuted, fontSize = 12.sp)
             }
         }
+    }
     }
 }
 
