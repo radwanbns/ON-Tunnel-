@@ -95,18 +95,20 @@ object ServerTransfer {
     fun isLockedCotFile(text: String): Boolean =
         isCotFile(text) && text.trim().lineSequence().drop(1).firstOrNull() == "L"
 
-    /** Export exactly one server, with an optional HTML note and optional password lock. */
-    fun exportCot(entry: ServerEntry, noteHtml: String, password: String? = null): String {
+    /**
+     * Export one server with a UI lock flag but no password.
+     * Locked .cot files are read-only in ON Tunnel; their contents are not encrypted.
+     */
+    fun exportCot(entry: ServerEntry, noteHtml: String, locked: Boolean = false): String {
         require(noteHtml.length <= 100_000) { "HTML note is too large" }
-        val portable = entry.copy(noteHtml = noteHtml, locked = false, subscription = false)
-        val payload = export(listOf(portable), password)
-        val mode = if (password.isNullOrEmpty()) "U" else "L"
+        val portable = entry.copy(noteHtml = noteHtml, locked = locked, subscription = false)
+        val payload = export(listOf(portable))
         val encoded = Base64.encodeToString(payload.toByteArray(Charsets.UTF_8), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
-        return COT_HEADER + "\n" + mode + "\n" + encoded
+        return COT_HEADER + "\n" + (if (locked) "L" else "U") + "\n" + encoded
     }
 
-    /** Import one .cot server and preserve its locked/unlocked state and HTML note. */
-    fun importCot(text: String, password: String? = null): ServerEntry {
+    /** Import one .cot server without a password and preserve its lock flag and HTML note. */
+    fun importCot(text: String): ServerEntry {
         val raw = text.trim()
         require(isCotFile(raw)) { "Not an ON Tunnel .cot file" }
         val lines = raw.lineSequence().toList()
@@ -114,7 +116,8 @@ object ServerTransfer {
         val mode = lines[1].trim()
         require(mode == "U" || mode == "L") { "Unsupported .cot file mode" }
         val payload = String(Base64.decode(lines.drop(2).joinToString("").trim(), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING), Charsets.UTF_8)
-        val imported = importServers(payload, password, preserveLock = true)
+        require(!isLockedFile(payload)) { "This older password-protected .cot file needs its original password" }
+        val imported = importServers(payload, preserveLock = true)
         require(imported.size == 1) { "A .cot file must contain exactly one server" }
         return imported.single().copy(locked = mode == "L", subscription = false)
     }
