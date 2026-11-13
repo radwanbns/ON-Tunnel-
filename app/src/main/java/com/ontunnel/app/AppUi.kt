@@ -525,7 +525,7 @@ internal fun ONTunnelApp(
                 )
             } else if (currentTab == "LOGS") {
                 BackHandler { currentTab = "HOME" }
-                LogsScreen(onBack = { currentTab = "HOME" }, onConfig = { currentTab = "CONFIG" })
+                LogsScreen(onBack = { currentTab = "HOME" }, onConfig = { currentTab = "CONFIG" }, onMore = { currentTab = "MORE" })
             } else if (currentTab == "MORE") {
                 BackHandler { currentTab = "HOME" }
                 MoreScreen(
@@ -1804,7 +1804,7 @@ private fun HomeConfigLogsBottomBar(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LogsScreen(onBack: () -> Unit, onConfig: () -> Unit) {
+private fun LogsScreen(onBack: () -> Unit, onConfig: () -> Unit, onMore: () -> Unit) {
     val context = LocalContext.current
     var entries by remember { mutableStateOf(AppLogs.read(context)) }
     LaunchedEffect(Unit) {
@@ -1821,7 +1821,7 @@ private fun LogsScreen(onBack: () -> Unit, onConfig: () -> Unit) {
                 onHome = onBack,
                 onConfig = onConfig,
                 onLogs = {},
-                onMore = {}
+                onMore = onMore
             )
         },
         topBar = {
