@@ -269,7 +269,9 @@ internal fun ONTunnelApp(
                 val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Cannot read file")
                 if (bytes.size > 5_000_000) error("Server file is too large")
                 val text = String(bytes, Charsets.UTF_8)
-                if (ServerTransfer.isLockedFile(text)) {
+                if (OvpnConfigTools.looksLikeOvpn(text)) {
+                    openOvpnEditorFromText(text, displayName(context, uri)?.substringBeforeLast('.'))
+                } else if (ServerTransfer.isLockedFile(text)) {
                     pendingImportText = text
                     passwordInput = ""
                     passwordPurpose = "import_file"
@@ -297,7 +299,9 @@ internal fun ONTunnelApp(
             val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Cannot read file")
             if (bytes.size > 5_000_000) error("Server file is too large")
             val text = String(bytes, Charsets.UTF_8)
-            if (ServerTransfer.isLockedFile(text)) {
+            if (OvpnConfigTools.looksLikeOvpn(text)) {
+                openOvpnEditorFromText(text, displayName(context, uri)?.substringBeforeLast('.'))
+            } else if (ServerTransfer.isLockedFile(text)) {
                 pendingImportText = text
                 passwordInput = ""
                 passwordPurpose = "import_file"
