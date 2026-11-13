@@ -1316,8 +1316,16 @@ private fun fetchAndParseSubscription(url: String): Result<List<ServerEntry>> = 
     val errors = mutableListOf<String>()
     for (line in lines) {
         try {
-            val parsed = V2RayConfigParser.parse(line)
-            entries += ServerEntry(name = parsed.name, config = parsed.config, uri = parsed.uri, locked = true)
+            if (line.startsWith("ontunnel://server/", ignoreCase = true)) {
+                // ON Tunnel portable URI carries the complete SSH/OpenVPN/V2Ray profile.
+                // Subscription entries are always forced locked, regardless of the URI flag.
+                val imported = ServerTransfer.importText(line)
+                entries += imported.map { it.copy(locked = true) }
+            } else {
+                // Standard V2Ray subscription links (VLESS / VMess / Trojan / Shadowsocks).
+                val parsed = V2RayConfigParser.parse(line)
+                entries += ServerEntry(name = parsed.name, config = parsed.config, uri = parsed.uri, locked = true)
+            }
         } catch (e: Exception) {
             errors += (e.message ?: "parse error")
         }
