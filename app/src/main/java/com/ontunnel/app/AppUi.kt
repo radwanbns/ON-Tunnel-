@@ -1156,14 +1156,27 @@ internal fun ONTunnelApp(
 
 
 @Composable
-private fun SettingsPage(
+private fun MoreScreen(
     themeMode: String,
     onThemeChange: (String) -> Unit,
-    dnsMode: String,
-    onDnsModeChange: (String) -> Unit,
-    customDns: String,
-    onCustomDnsChange: (String) -> Unit
+    onHome: () -> Unit,
+    onServers: () -> Unit,
+    onLogs: () -> Unit
 ) {
+    val context = LocalContext.current
+    val version = remember {
+        try {
+            val info = context.packageManager.getPackageInfo(context.packageName, 0)
+            val code = if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+            "${info.versionName ?: "Unknown"} ($code)"
+        } catch (_: Exception) { "Unknown" }
+    }
+    val socials = listOf(
+        Triple("YouTube", "https://youtube.com/@your_channel", Icons.Default.PlayCircle),
+        Triple("Telegram", "https://t.me/your_channel", Icons.AutoMirrored.Filled.Send),
+        Triple("WhatsApp", "https://wa.me/0000000000", Icons.Default.Chat),
+        Triple("Facebook", "https://facebook.com/your_page", Icons.Default.Facebook)
+    )
     Scaffold(
         containerColor = Bg,
         topBar = {
@@ -1187,117 +1200,6 @@ private fun SettingsPage(
     ) { innerPadding ->
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(innerPadding),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Text(
-                "Settings",
-                color = TextMain,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier.padding(bottom = 4.dp, top = 4.dp)
-            )
-        }
-        item {
-            SettingsCard(title = "Appearance") {
-                val labels = listOf("Auto (System)", "Light", "Dark")
-                val values = listOf("system", "light", "dark")
-                values.forEachIndexed { i, v ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { onThemeChange(v) }
-                            .padding(vertical = 10.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = themeMode == v,
-                            onClick = { onThemeChange(v) },
-                            colors = RadioButtonDefaults.colors(selectedColor = Accent)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(labels[i], color = TextMain, fontSize = 15.sp)
-                    }
-                }
-            }
-        }
-        item {
-            SettingsCard(title = "DNS") {
-                val options = listOf(
-                    "system" to "System default",
-                    "cloudflare" to "Cloudflare (1.1.1.1)",
-                    "google" to "Google (8.8.8.8)",
-                    "adguard" to "AdGuard (94.140.14.14)",
-                    "custom" to "Custom"
-                )
-                options.forEach { (v, label) ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { onDnsModeChange(v) }
-                            .padding(vertical = 8.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = dnsMode == v,
-                            onClick = { onDnsModeChange(v) },
-                            colors = RadioButtonDefaults.colors(selectedColor = Accent)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(label, color = TextMain, fontSize = 15.sp)
-                    }
-                }
-                if (dnsMode == "custom") {
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = customDns,
-                        onValueChange = onCustomDnsChange,
-                        label = { Text("Custom DNS (IP)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            }
-        }
-        item {
-            Text(
-                "ON Tunnel",
-                color = TextMuted,
-                fontSize = 12.sp,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
-                textAlign = TextAlign.Center
-            )
-        }
-    }
-}
-
-@Composable
-private fun MoreScreen(
-    themeMode: String,
-    onThemeChange: (String) -> Unit,
-    onHome: () -> Unit,
-    onServers: () -> Unit,
-    onLogs: () -> Unit
-) {
-    val context = LocalContext.current
-    val version = remember {
-        try {
-            val info = context.packageManager.getPackageInfo(context.packageName, 0)
-            val code = if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
-            "${info.versionName ?: "Unknown"} ($code)"
-        } catch (_: Exception) { "Unknown" }
-    }
-    val socials = listOf(
-        Triple("YouTube", "https://youtube.com/@your_channel", Icons.Default.PlayCircle),
-        Triple("Telegram", "https://t.me/your_channel", Icons.AutoMirrored.Filled.Send),
-        Triple("WhatsApp", "https://wa.me/0000000000", Icons.Default.Chat),
-        Triple("Facebook", "https://facebook.com/your_page", Icons.Default.Facebook)
-    )
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
