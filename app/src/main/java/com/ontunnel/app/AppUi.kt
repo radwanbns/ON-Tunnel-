@@ -188,9 +188,11 @@ internal fun ONTunnelApp(
             val result = withContext(Dispatchers.IO) { fetchAndParseSubscription(SUBSCRIPTION_URL) }
             isUpdating = false
             result.onSuccess { fresh ->
-                val oldLocked = servers.filter { it.locked }.associateBy { it.name }
-                val manual = servers.filter { !it.locked }
-                val newLocked = fresh.distinctBy { it.name }.map { e -> oldLocked[e.name]?.let { e.copy(id = it.id) } ?: e }
+                val oldLocked = servers.filter { it.subscription }.associateBy { it.name }
+                val manual = servers.filter { !it.subscription }
+                val newLocked = fresh.distinctBy { it.name }.map { e ->
+                    (oldLocked[e.name]?.let { e.copy(id = it.id) } ?: e).copy(locked = true, subscription = true)
+                }
                 val added = newLocked.count { it.name !in oldLocked }
                 val merged = newLocked + manual
                 saveServers(merged)
@@ -495,11 +497,11 @@ internal fun ONTunnelApp(
                                             DropdownMenuItem(
                                                 text = { Text("Export servers (JSON)") },
                                                 leadingIcon = { Icon(Icons.Default.FileDownload, null) },
-                                                enabled = servers.any { !it.locked },
+                                                enabled = servers.any { !it.subscription },
                                                 onClick = {
                                                     menuOpen = false
                                                     try {
-                                                        val addedServers = servers.filter { !it.locked }
+                                                        val addedServers = servers.filter { !it.locked && !it.subscription }
                                                         if (addedServers.isEmpty()) {
                                                             message("No added servers to export")
                                                         } else {
@@ -657,7 +659,7 @@ internal fun ONTunnelApp(
                                                     saveServers(servers + copy)
                                                 },
                                                 onDelete = {
-                                                    if (!entry.locked) {
+                                                    if (!entry.subscription) {
                                                         saveServers(servers.filter { it.id != entry.id })
                                                         if (selectedId == entry.id) select("")
                                                     }
@@ -871,7 +873,7 @@ internal fun ONTunnelApp(
                     confirmButton = {
                         TextButton(onClick = {
                             confirmDeleteAll = false
-                            val keep = servers.filter { it.locked }
+                            val keep = servers.filter { it.subscription }
                             saveServers(keep)
                             if (keep.none { it.id == selectedId }) select("")
                         }) { Text("Delete", color = RedErr) }
@@ -1235,17 +1237,17 @@ private fun ServerCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            if (!entry.locked) {
+            if (!entry.subscription) {
                 Box {
                     IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Default.MoreVert, "Options", tint = TextMuted, modifier = Modifier.size(18.dp))
                     }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(text = { Text("Edit") }, leadingIcon = { Icon(Icons.Default.Edit, null) }, onClick = { menu = false; onEdit() })
-                        DropdownMenuItem(text = { Text("Share URI (locked)") }, leadingIcon = { Icon(Icons.Default.Lock, null) }, onClick = { menu = false; onShareUri(true) })
-                        DropdownMenuItem(text = { Text("Share URI (unlocked)") }, leadingIcon = { Icon(Icons.Default.Share, null) }, onClick = { menu = false; onShareUri(false) })
-                        DropdownMenuItem(text = { Text("Share JSON") }, leadingIcon = { Icon(Icons.Default.Code, null) }, onClick = { menu = false; onShareJson() })
-                        DropdownMenuItem(text = { Text("Duplicate") }, leadingIcon = { Icon(Icons.Default.Add, null) }, onClick = { menu = false; onDuplicate() })
+                        if (!entry.locked) DropdownMenuItem(text = { Text("Edit") }, leadingIcon = { Icon(Icons.Default.Edit, null) }, onClick = { menu = false; onEdit() })
+                        if (!entry.locked) DropdownMenuItem(text = { Text("Share URI (locked)") }, leadingIcon = { Icon(Icons.Default.Lock, null) }, onClick = { menu = false; onShareUri(true) })
+                        if (!entry.locked) DropdownMenuItem(text = { Text("Share URI (unlocked)") }, leadingIcon = { Icon(Icons.Default.Share, null) }, onClick = { menu = false; onShareUri(false) })
+                        if (!entry.locked) DropdownMenuItem(text = { Text("Share JSON") }, leadingIcon = { Icon(Icons.Default.Code, null) }, onClick = { menu = false; onShareJson() })
+                        if (!entry.locked) DropdownMenuItem(text = { Text("Duplicate") }, leadingIcon = { Icon(Icons.Default.Add, null) }, onClick = { menu = false; onDuplicate() })
                         DropdownMenuItem(text = { Text("Delete", color = RedErr) }, leadingIcon = { Icon(Icons.Default.Delete, null, tint = RedErr) }, onClick = { menu = false; onDelete() })
                     }
                 }
