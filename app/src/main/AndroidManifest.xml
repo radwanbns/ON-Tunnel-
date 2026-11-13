@@ -27,6 +27,12 @@
                 <data android:mimeType="application/octet-stream" />
                 <data android:mimeType="application/vnd.ontunnel.cot" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="ontunnel" android:host="locked" />
+            </intent-filter>
         </activity>
         <service android:name=".ONTunnelVpnService" android:permission="android.permission.BIND_VPN_SERVICE"
             android:exported="false" android:foregroundServiceType="specialUse">
