@@ -88,18 +88,6 @@ internal fun SshEditorScreen(
                 } else next
             }
 
-            if (p.isDnstt) {
-                SshHint("SSH-DNSTT tunnels SSH through DNS queries and needs the DNSTT client core, which is not bundled in this build yet. You can already store the details; connecting will report that the core is missing.", Amber)
-                Field("DNS server (resolver IP or DoH/DoT URL)", p.dnsServer, { p = p.copy(dnsServer = it) })
-                Field("Tunnel domain (NS)", p.dnsDomain, { p = p.copy(dnsDomain = it) })
-                OutlinedTextField(
-                    value = p.dnsKey, onValueChange = { p = p.copy(dnsKey = it) },
-                    label = { Text("DNSTT public key") }, minLines = 2, maxLines = 4,
-                    textStyle = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
             SshSection("SSH server")
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Box(Modifier.weight(1f)) { Field("SSH host", p.host, { p = p.copy(host = it) }) }
