@@ -5,10 +5,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.security.SecureRandom
 import javax.crypto.Cipher
-import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
+import javax.crypto.Mac
 
 /**
  * Portable ON Tunnel server files.
@@ -40,7 +39,7 @@ object ServerTransfer {
         return JSONObject()
             .put("format", LOCKED_FORMAT)
             .put("version", VERSION)
-            .put("kdf", "PBKDF2WithHmacSHA256")
+            .put("kdf", "PBKDF2-HMAC-SHA256")
             .put("iterations", ITERATIONS)
             .put("salt", Base64.encodeToString(salt, Base64.NO_WRAP))
             .put("iv", Base64.encodeToString(iv, Base64.NO_WRAP))
@@ -75,7 +74,7 @@ object ServerTransfer {
 
         val obj = JSONObject(body)
         val array = obj.optJSONArray("servers")
-            ?: if (obj.has("config") && obj.has("name")) JSONArray().put(obj) else null
+            ?: (if (obj.has("config") && obj.has("name")) JSONArray().put(obj) else null)
             ?: error("This is not an ON Tunnel server file")
         val result = mutableListOf<ServerEntry>()
         for (i in 0 until array.length()) {
@@ -133,14 +132,19 @@ object ServerTransfer {
         return entries
     }
 
+    /** PBKDF2-HMAC-SHA256 implemented with Mac for Android API 24 compatibility. */
     private fun derive(password: String, salt: ByteArray): SecretKeySpec {
-        val spec = PBEKeySpec(password.toCharArray(), salt, ITERATIONS, 256)
-        return try {
-            val bytes = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-                .generateSecret(spec).encoded
-            SecretKeySpec(bytes, "AES")
-        } finally {
-            spec.clearPassword()
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(javax.crypto.spec.SecretKeySpec(password.toByteArray(Charsets.UTF_8), "HmacSHA256"))
+        val block = ByteArray(salt.size + 4)
+        System.arraycopy(salt, 0, block, 0, salt.size)
+        block[block.size - 1] = 1
+        var u = mac.doFinal(block)
+        val result = u.copyOf()
+        for (i in 2..ITERATIONS) {
+            u = mac.doFinal(u)
+            for (j in result.indices) result[j] = (result[j].toInt() xor u[j].toInt()).toByte()
         }
+        return SecretKeySpec(result, "AES")
     }
 }
