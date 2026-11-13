@@ -82,8 +82,12 @@ object ServerTransfer {
         for (i in 0 until array.length()) {
             val source = array.optJSONObject(i) ?: continue
             val entry = ServerEntry.fromJson(source) ?: continue
-            // Imported servers are always local/editable, never subscription-locked.
-            result += entry.copy(id = java.util.UUID.randomUUID().toString(), locked = preserveLock && (entry.locked || format == LOCKED_FORMAT), subscription = false)
+            // Password-protected containers always import as read-only locked servers.
+            result += entry.copy(
+                id = java.util.UUID.randomUUID().toString(),
+                locked = format == LOCKED_FORMAT || (preserveLock && entry.locked),
+                subscription = false
+            )
         }
         require(result.isNotEmpty()) { "No valid servers found in this file" }
         return result
@@ -99,16 +103,16 @@ object ServerTransfer {
      * Export one server with a UI lock flag but no password.
      * Locked .cot files are read-only in ON Tunnel; their contents are not encrypted.
      */
-    fun exportCot(entry: ServerEntry, noteHtml: String, locked: Boolean = false): String {
+    fun exportCot(entry: ServerEntry, noteHtml: String, locked: Boolean = false, password: String? = null): String {
         require(noteHtml.length <= 100_000) { "HTML note is too large" }
+        if (locked) require(!password.isNullOrEmpty() && password.length >= 6) { "Choose a password with at least 6 characters" }
         val portable = entry.copy(noteHtml = noteHtml, locked = locked, subscription = false)
-        val payload = export(listOf(portable))
+        val payload = export(listOf(portable), if (locked) password else null)
         val encoded = Base64.encodeToString(payload.toByteArray(Charsets.UTF_8), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
         return COT_HEADER + "\n" + (if (locked) "L" else "U") + "\n" + encoded
     }
 
-    /** Import one .cot server without a password and preserve its lock flag and HTML note. */
-    fun importCot(text: String): ServerEntry {
+    fun importCot(text: String, password: String? = null): ServerEntry {
         val raw = text.trim()
         require(isCotFile(raw)) { "Not an ON Tunnel .cot file" }
         val lines = raw.lineSequence().toList()
@@ -116,8 +120,7 @@ object ServerTransfer {
         val mode = lines[1].trim()
         require(mode == "U" || mode == "L") { "Unsupported .cot file mode" }
         val payload = String(Base64.decode(lines.drop(2).joinToString("").trim(), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING), Charsets.UTF_8)
-        require(!isLockedFile(payload)) { "This older password-protected .cot file needs its original password" }
-        val imported = importServers(payload, preserveLock = true)
+        val imported = importServers(payload, password, preserveLock = mode == "L")
         require(imported.size == 1) { "A .cot file must contain exactly one server" }
         return imported.single().copy(locked = mode == "L", subscription = false)
     }
@@ -130,16 +133,17 @@ object ServerTransfer {
      * SSH/OpenVPN carry the full profile in a URL-safe Base64 parameter.
      * Base64 is encoding, not encryption: credentials remain recoverable.
      */
-    fun shareUri(entry: ServerEntry, locked: Boolean): String {
-        // A locked URI carries the lock state together with the complete profile.
-        // Native VLESS/VMess/Trojan URIs cannot represent ON Tunnel's read-only flag.
+    fun isLockedUri(text: String): Boolean =
+        text.trim().startsWith("ontunnel://locked/", ignoreCase = true)
+
+    fun shareUri(entry: ServerEntry, locked: Boolean, password: String? = null): String {
         if (locked) {
+            require(!password.isNullOrEmpty() && password.length >= 6) { "Choose a password with at least 6 characters" }
             val portable = entry.copy(locked = true, subscription = false)
-            val encoded = Base64.encodeToString(
-                portable.toJson().toString().toByteArray(Charsets.UTF_8),
-                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
-            )
-            return "ontunnel://locked/$encoded#${enc(entry.name)}"
+            val encrypted = export(listOf(portable), password)
+            val encoded = Base64.encodeToString(encrypted.toByteArray(Charsets.UTF_8),
+                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+            return "ontunnel://locked/$encoded"
         }
         if (entry.type == ServerEntry.TYPE_V2RAY) {
             if (entry.uri.isNotBlank()) return entry.uri
@@ -155,46 +159,30 @@ object ServerTransfer {
         val encoded = Base64.encodeToString(profileJson.toByteArray(Charsets.UTF_8),
             Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
         val name = enc(entry.name)
-        val lockFlag = if (locked) "1" else "0"
         return when (entry.type) {
             ServerEntry.TYPE_OPENVPN -> {
                 val p = OvpnProfile.fromJson(entry.config)!!
                 val host = p.serverOverride.ifBlank { p.remote?.host.orEmpty() }
                 val port = p.remote?.port ?: 1194
-                "ovpn://\${enc(p.username)}:\${enc(p.password)}@\${host}:\${port}?mode=\${enc(p.mode)}&proxy=\${enc(p.proxyHost)}%3A\${p.proxyPort}&profile=$encoded&locked=$lockFlag#$name"
+                "ovpn://\${enc(p.username)}:\${enc(p.password)}@$host:$port?mode=\${enc(p.mode)}&proxy=\${enc(p.proxyHost)}%3A\${p.proxyPort}&profile=$encoded&locked=0#$name"
             }
             ServerEntry.TYPE_SSH -> {
                 val p = SshProfile.fromJson(entry.config)!!
-                "ssh://\${enc(p.username)}:\${enc(p.password)}@\${p.host}:\${p.port}?mode=\${enc(p.mode)}&proxy=\${enc(p.proxyHost)}%3A\${p.proxyPort}&profile=$encoded&locked=$lockFlag#$name"
+                "ssh://\${enc(p.username)}:\${enc(p.password)}@\${p.host}:\${p.port}?mode=\${enc(p.mode)}&proxy=\${enc(p.proxyHost)}%3A\${p.proxyPort}&profile=$encoded&locked=0#$name"
             }
             else -> error("Unsupported server type")
         }
     }
 
-    fun importText(text: String): List<ServerEntry> {
+    fun importText(text: String, password: String? = null): List<ServerEntry> {
         val raw = text.trim()
-        if (raw.startsWith("ontunnel://locked/", true)) {
-            val encoded = raw.substringAfter("ontunnel://locked/", "")
-                .substringBefore('#').trim()
-            require(encoded.isNotBlank()) { "Locked URI has no server data" }
-            val decoded = String(
-                Base64.decode(encoded, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING),
-                Charsets.UTF_8
-            )
-            val imported = ServerEntry.fromJson(JSONObject(decoded))
-                ?: error("Invalid locked server URI")
-            require(imported.type in setOf(
-                ServerEntry.TYPE_V2RAY,
-                ServerEntry.TYPE_OPENVPN,
-                ServerEntry.TYPE_SSH
-            )) { "Unsupported server type in locked URI" }
-            return listOf(
-                imported.copy(
-                    id = java.util.UUID.randomUUID().toString(),
-                    locked = true,
-                    subscription = false
-                )
-            )
+        if (isLockedUri(raw)) {
+            val encoded = raw.substringAfter("ontunnel://locked/", "").substringBefore('#').trim()
+            require(encoded.isNotBlank()) { "Locked URI has no encrypted data" }
+            require(!password.isNullOrEmpty()) { "Password is required for this locked URI" }
+            val encrypted = String(Base64.decode(encoded, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING), Charsets.UTF_8)
+            require(isLockedFile(encrypted)) { "Invalid encrypted server URI" }
+            return importServers(encrypted, password, preserveLock = true)
         }
         if (raw.startsWith("ovpn://", true) || raw.startsWith("ssh://", true)) {
             val scheme = raw.substringBefore("://").lowercase()
@@ -206,15 +194,14 @@ object ServerTransfer {
             val encoded = params["profile"] ?: error("The $scheme URI has no profile data")
             val decoded = String(Base64.decode(encoded, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING), Charsets.UTF_8)
             val name = raw.substringAfter('#', "").takeIf { it.isNotBlank() }?.let(::dec)
-            val locked = params["locked"] == "1"
             val entry = when (scheme) {
                 "ovpn" -> {
                     val p = OvpnProfile.fromJson(decoded) ?: error("Invalid OpenVPN URI")
-                    ServerEntry.openVpn(if (name.isNullOrBlank()) p else p.copy(name = name)).copy(locked = locked)
+                    ServerEntry.openVpn(if (name.isNullOrBlank()) p else p.copy(name = name))
                 }
                 "ssh" -> {
                     val p = SshProfile.fromJson(decoded) ?: error("Invalid SSH URI")
-                    ServerEntry.ssh(if (name.isNullOrBlank()) p else p.copy(name = name)).copy(locked = locked)
+                    ServerEntry.ssh(if (name.isNullOrBlank()) p else p.copy(name = name))
                 }
                 else -> error("Unsupported URI")
             }
@@ -232,24 +219,18 @@ object ServerTransfer {
         }
         if (raw.startsWith("{")) {
             val json = JSONObject(raw)
+            if (json.optString("format") == LOCKED_FORMAT) return importServers(raw, password, preserveLock = true)
             if (json.has("outbounds")) {
                 val parsed = V2RayConfigParser.parse(raw)
                 return listOf(ServerEntry(name = parsed.name, config = parsed.config, uri = parsed.uri))
             }
             return importServers(raw)
         }
-        // Treat plain text as an unsupported format instead of recursively
-        // parsing the same single line until the app runs out of stack space.
-        val lines = raw.lines()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() && !it.startsWith("#") }
+        val lines = raw.lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
         require(lines.isNotEmpty()) { "No supported servers found" }
         require(lines.size > 1) { "No supported servers found in clipboard" }
-
         val entries = mutableListOf<ServerEntry>()
-        for (line in lines) {
-            entries += importText(line)
-        }
+        for (line in lines) entries += importText(line, password)
         require(entries.isNotEmpty()) { "No supported servers found" }
         return entries
     }
