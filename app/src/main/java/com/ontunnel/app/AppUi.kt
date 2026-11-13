@@ -219,8 +219,12 @@ internal fun ONTunnelApp(
     }
 
     fun addImported(imported: List<ServerEntry>) {
+        // Only suppress duplicates among locally added servers.
+        // A locked subscription entry must not prevent the user from importing
+        // the same profile as an independent editable server.
+        val localServers = servers.filter { !it.locked }
         val fresh = imported.filterNot { candidate ->
-            servers.any { it.type == candidate.type && it.config == candidate.config }
+            localServers.any { it.type == candidate.type && it.config == candidate.config }
         }
         if (fresh.isEmpty()) { message("These servers are already imported"); return }
         saveServers(servers + fresh)
