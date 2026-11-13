@@ -543,20 +543,12 @@ internal fun ONTunnelApp(
                                                 onClick = { menuOpen = false; serverFilePicker.launch(arrayOf("*/*")) }
                                             )
                                             DropdownMenuItem(
-                                                text = { Text("Export servers (JSON)") },
+                                                text = { Text("Export a server (.cot)") },
                                                 leadingIcon = { Icon(Icons.Default.FileDownload, null) },
-                                                enabled = servers.any { !it.subscription },
+                                                enabled = servers.any { !it.locked && !it.subscription },
                                                 onClick = {
                                                     menuOpen = false
-                                                    try {
-                                                        val addedServers = servers.filter { !it.locked && !it.subscription }
-                                                        if (addedServers.isEmpty()) {
-                                                            message("No added servers to export")
-                                                        } else {
-                                                            exportText = ServerTransfer.export(addedServers)
-                                                            exportFilePicker.launch("ON-Tunnel-servers.json")
-                                                        }
-                                                    } catch (e: Exception) { message(e.message ?: "Export failed") }
+                                                    message("Open a server's three-dot menu and choose Export server (.cot)")
                                                 }
                                             )
                                             DropdownMenuItem(
@@ -885,6 +877,67 @@ internal fun ONTunnelApp(
                 )
             }
 
+            if (cotExportEntry != null) {
+                AlertDialog(
+                    onDismissRequest = { cotExportEntry = null },
+                    containerColor = SurfaceC,
+                    title = { Text("Export server as .cot", color = TextMain, fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                "Add an optional HTML note. It will appear with this server after import. Links in the note can be opened.",
+                                color = TextMuted,
+                                fontSize = 13.sp
+                            )
+                            OutlinedTextField(
+                                value = cotNoteInput,
+                                onValueChange = { cotNoteInput = it },
+                                label = { Text("HTML note") },
+                                placeholder = { Text("<p>Server note: <a href=\"https://example.com\">Open link</a></p>") },
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 110.dp, max = 220.dp)
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = cotLockEnabled, onCheckedChange = { cotLockEnabled = it })
+                                Text("Lock file with password", color = TextMain, fontSize = 13.sp)
+                            }
+                            if (cotLockEnabled) {
+                                OutlinedTextField(
+                                    value = cotPasswordInput,
+                                    onValueChange = { cotPasswordInput = it },
+                                    label = { Text("Password (minimum 6 characters)") },
+                                    singleLine = true,
+                                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
+                                )
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            try {
+                                val entry = cotExportEntry ?: error("No server selected")
+                                if (cotLockEnabled && cotPasswordInput.length < 6) {
+                                    error("Password must contain at least 6 characters")
+                                }
+                                cotExportText = ServerTransfer.exportCot(
+                                    entry,
+                                    cotNoteInput,
+                                    if (cotLockEnabled) cotPasswordInput else null
+                                )
+                                val safeName = entry.name.replace(Regex("[^A-Za-z0-9._-]"), "_")
+                                    .trim('_').ifBlank { "ON-Tunnel-server" }
+                                cotExportPicker.launch("$safeName.cot")
+                                cotExportEntry = null
+                            } catch (e: Exception) {
+                                message(e.message ?: "Export failed")
+                            }
+                        }) { Text("Export .cot", color = Accent) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { cotExportEntry = null }) { Text("Cancel", color = TextMuted) }
+                    }
+                )
+            }
+
             if (passwordPurpose != null) {
                 AlertDialog(
                     onDismissRequest = {
@@ -1188,6 +1241,25 @@ private fun ConnectHero(
             }
         }
     }
+}
+
+@Composable
+private fun HtmlServerNote(html: String) {
+    AndroidView(
+        modifier = Modifier.fillMaxWidth(),
+        factory = { context ->
+            TextView(context).apply {
+                textSize = 11f
+                setTextColor(android.graphics.Color.GRAY)
+                linksClickable = true
+                movementMethod = LinkMovementMethod.getInstance()
+            }
+        },
+        update = { view ->
+            view.text = Html.fromHtml(html, Html.FROM_HTML_MODE_COMPACT)
+            view.movementMethod = LinkMovementMethod.getInstance()
+        }
+    )
 }
 
 @Composable
