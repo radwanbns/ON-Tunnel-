@@ -25,6 +25,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:mimeType="application/json" />
                 <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/vnd.ontunnel.cot" />
             </intent-filter>
         </activity>
         <service android:name=".ONTunnelVpnService" android:permission="android.permission.BIND_VPN_SERVICE"
