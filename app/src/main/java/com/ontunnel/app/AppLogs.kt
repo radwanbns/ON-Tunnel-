@@ -14,6 +14,8 @@ internal object AppLogs {
     private const val KEY = "entries"
     private const val LIMIT = 400
     private const val KEY_SERVER_DETAILS_VISIBLE = "server_details_visible"
+    @Volatile private var lastLifecycleMessage: String? = null
+    @Volatile private var lastLifecycleMessageAt: Long = 0L
 
     @Synchronized fun setServerDetailsVisible(context: Context, visible: Boolean, clearWhenHidden: Boolean = false) {
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -26,8 +28,15 @@ internal object AppLogs {
         val detailsVisible = prefs.getBoolean(KEY_SERVER_DETAILS_VISIBLE, true)
         // For locked subscription profiles, retain only generic connection lifecycle messages.
         if (!detailsVisible && message !in setOf("Tunnel disconnected", "User requested VPN disconnect", "V2Ray tunnel connected", "SSH tunnel connected")) return
-        val old = try { JSONArray(prefs.getString(KEY, "[]")) } catch (_: Exception) { JSONArray() }
         val now = System.currentTimeMillis()
+        // Prevent duplicate lifecycle callbacks from producing repeated identical log rows.
+        if (message in setOf("V2Ray tunnel connected", "SSH tunnel connected", "Tunnel disconnected") &&
+            lastLifecycleMessage == message && now - lastLifecycleMessageAt < 5_000L) return
+        if (message in setOf("V2Ray tunnel connected", "SSH tunnel connected", "Tunnel disconnected")) {
+            lastLifecycleMessage = message
+            lastLifecycleMessageAt = now
+        }
+        val old = try { JSONArray(prefs.getString(KEY, "[]")) } catch (_: Exception) { JSONArray() }
         val item = JSONObject().put("id", now * 1000L + old.length()).put("time", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(now))).put("message", message.replace(Regex("[\\r\\n]+"), " ").take(500))
         val next = JSONArray()
         val start = (old.length() - LIMIT + 1).coerceAtLeast(0)
