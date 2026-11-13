@@ -648,7 +648,7 @@ class MainActivity : ComponentActivity() {
 
     private fun openOvpnStore() {
         ovpnMissing = false
-        val uris = listOf("market://details?id=${OpenVpnController.PKG}", "https://play.google.com/store/apps/details?id=${OpenVpnController.PKG}")
+        val uris = listOf(SecureStrings.marketOvpnPrefix + OpenVpnController.PKG, SecureStrings.playStoreOvpnPrefix + OpenVpnController.PKG)
         for (u in uris) {
             try {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
