@@ -91,25 +91,77 @@ object ServerTransfer {
     /**
      * Portable URI for all protocols. Locked means read-only inside ON Tunnel; no password is used.
      */
+    /**
+     * Protocol-specific portable URIs. V2Ray uses its native URI when available;
+     * SSH/OpenVPN carry the full profile in a URL-safe Base64 parameter.
+     * Base64 is encoding, not encryption: credentials remain recoverable.
+     */
     fun shareUri(entry: ServerEntry, locked: Boolean): String {
-        val payload = entry.copy(id = "", locked = locked).toJson().toString()
-        val encoded = Base64.encodeToString(
-            payload.toByteArray(Charsets.UTF_8),
-            Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
-        )
-        return "ontunnel://server/$encoded"
+        if (entry.type == ServerEntry.TYPE_V2RAY) {
+            if (entry.uri.isNotBlank()) return entry.uri
+            val encoded = Base64.encodeToString(entry.config.toByteArray(Charsets.UTF_8),
+                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+            return "v2ray://$encoded#\${enc(entry.name)}"
+        }
+        val profileJson = when (entry.type) {
+            ServerEntry.TYPE_OPENVPN -> OvpnProfile.fromJson(entry.config)?.toJson()?.toString()
+            ServerEntry.TYPE_SSH -> SshProfile.fromJson(entry.config)?.toJson()?.toString()
+            else -> null
+        } ?: error("Unsupported server type")
+        val encoded = Base64.encodeToString(profileJson.toByteArray(Charsets.UTF_8),
+            Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+        val name = enc(entry.name)
+        val lockFlag = if (locked) "1" else "0"
+        return when (entry.type) {
+            ServerEntry.TYPE_OPENVPN -> {
+                val p = OvpnProfile.fromJson(entry.config)!!
+                val host = p.serverOverride.ifBlank { p.remote?.host.orEmpty() }
+                val port = p.remote?.port ?: 1194
+                "ovpn://\${enc(p.username)}:\${enc(p.password)}@\${host}:\${port}?mode=\${enc(p.mode)}&proxy=\${enc(p.proxyHost)}%3A\${p.proxyPort}&profile=$encoded&locked=$lockFlag#$name"
+            }
+            ServerEntry.TYPE_SSH -> {
+                val p = SshProfile.fromJson(entry.config)!!
+                "ssh://\${enc(p.username)}:\${enc(p.password)}@\${p.host}:\${p.port}?mode=\${enc(p.mode)}&proxy=\${enc(p.proxyHost)}%3A\${p.proxyPort}&profile=$encoded&locked=$lockFlag#$name"
+            }
+            else -> error("Unsupported server type")
+        }
     }
 
     fun importText(text: String): List<ServerEntry> {
         val raw = text.trim()
-        if (raw.startsWith("ontunnel://server/")) {
-            val body = raw.substringAfter("ontunnel://server/")
-            val decoded = String(
-                Base64.decode(body, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING),
-                Charsets.UTF_8
-            )
-            val entry = ServerEntry.fromJson(JSONObject(decoded)) ?: error("Invalid ON Tunnel URI")
-            return listOf(entry.copy(id = java.util.UUID.randomUUID().toString()))
+        if (raw.startsWith("ovpn://", true) || raw.startsWith("ssh://", true)) {
+            val scheme = raw.substringBefore("://").lowercase()
+            val query = raw.substringAfter('?').substringBefore('#')
+            val params = query.split("&").mapNotNull { part ->
+                val bits = part.split("=", limit = 2)
+                if (bits.size == 2) dec(bits[0]) to bits[1] else null
+            }.toMap()
+            val encoded = params["profile"] ?: error("The $scheme URI has no profile data")
+            val decoded = String(Base64.decode(encoded, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING), Charsets.UTF_8)
+            val name = raw.substringAfter('#', "").takeIf { it.isNotBlank() }?.let(::dec)
+            val locked = params["locked"] == "1"
+            val entry = when (scheme) {
+                "ovpn" -> {
+                    val p = OvpnProfile.fromJson(decoded) ?: error("Invalid OpenVPN URI")
+                    ServerEntry.openVpn(if (name.isNullOrBlank()) p else p.copy(name = name)).copy(locked = locked)
+                }
+                "ssh" -> {
+                    val p = SshProfile.fromJson(decoded) ?: error("Invalid SSH URI")
+                    ServerEntry.ssh(if (name.isNullOrBlank()) p else p.copy(name = name)).copy(locked = locked)
+                }
+                else -> error("Unsupported URI")
+            }
+            return listOf(entry)
+        }
+        if (raw.startsWith("v2ray://", true)) {
+            val encoded = raw.substringAfter("://").substringBefore('#')
+            val config = String(Base64.decode(encoded, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING), Charsets.UTF_8)
+            val name = raw.substringAfter('#', "").takeIf { it.isNotBlank() }?.let(::dec) ?: "V2Ray"
+            return listOf(ServerEntry(name = name, config = config))
+        }
+        if (raw.startsWith("vless://", true) || raw.startsWith("vmess://", true) || raw.startsWith("trojan://", true)) {
+            val parsed = V2RayConfigParser.parse(raw)
+            return listOf(ServerEntry(name = parsed.name, config = parsed.config, uri = parsed.uri))
         }
         if (raw.startsWith("{")) {
             val json = JSONObject(raw)
@@ -121,12 +173,18 @@ object ServerTransfer {
         }
         val entries = mutableListOf<ServerEntry>()
         raw.lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }.forEach { line ->
-            val parsed = V2RayConfigParser.parse(line)
-            entries += ServerEntry(name = parsed.name, config = parsed.config, uri = parsed.uri)
+            entries += importText(line)
         }
         require(entries.isNotEmpty()) { "No supported servers found" }
         return entries
     }
+
+    private fun enc(value: String): String =
+        java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+
+    private fun dec(value: String): String = try {
+        java.net.URLDecoder.decode(value.replace("+", "%2B"), "UTF-8")
+    } catch (_: Exception) { value }
 
     /** PBKDF2-HMAC-SHA256 implemented with Mac for Android API 24 compatibility. */
     private fun derive(password: String, salt: ByteArray, iterations: Int): SecretKeySpec {
