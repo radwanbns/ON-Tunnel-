@@ -1203,7 +1203,7 @@ private fun MoreScreen(
         containerColor = Bg,
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("More", fontWeight = FontWeight.Bold) },
+                title = { Text("ON Tunnel", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = Color.Transparent,
                     titleContentColor = TextMain
