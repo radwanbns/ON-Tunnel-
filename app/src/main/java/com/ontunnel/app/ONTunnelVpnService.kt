@@ -75,10 +75,13 @@ class ONTunnelVpnService : VpnService() {
             // Starting Xray only confirms that the core loaded; it does NOT prove that
             // the remote server accepted the connection. Probe through this live core
             // before reporting Connected (expired/invalid servers fail this check).
-            val delay = core!!.measureDelay("https://www.google.com/generate_204")
-            if (delay < 0) error("Server is unreachable or its access has expired")
+            val activeCore = core!!
+            if (!hasWorkingOutbound(activeCore)) {
+                error("Server is unreachable or its access has expired")
+            }
 
             running = true
+            startConnectionMonitor(activeCore)
             updateNotification("$protocolLabel Connected")
             if (protocolLabel == "SSH") SshTunnelService.hideNotification(this)
             sendBroadcast(
@@ -103,6 +106,69 @@ class ONTunnelVpnService : VpnService() {
      * URL-safe Base64 WITHOUT padding (43 characters). Anything else makes the core
      * fail with "BaseKey must be 32 bytes". The key is generated once and persisted.
      */
+    /**
+     * Verify the remote outbound, not merely that the Xray process started.
+     * Try two independent 204 endpoints so a single blocked test domain does not
+     * incorrectly mark a working VPN server as offline.
+     */
+    private fun hasWorkingOutbound(controller: CoreController): Boolean {
+        val probes = listOf(
+            "https://www.google.com/generate_204",
+            "https://cp.cloudflare.com/generate_204"
+        )
+        return probes.any { url ->
+            try {
+                controller.measureDelay(url) >= 0
+            } catch (_: Exception) {
+                false
+            }
+        }
+    }
+
+    /**
+     * Keep checking after Connected. Two consecutive failed rounds are required
+     * to avoid disconnecting on one temporary timeout.
+     */
+    @Volatile private var monitorActive = false
+
+    private fun startConnectionMonitor(controller: CoreController) {
+        monitorActive = true
+        Thread {
+            var failedRounds = 0
+            while (monitorActive && running) {
+                try {
+                    Thread.sleep(15_000L)
+                } catch (_: InterruptedException) {
+                    break
+                }
+                if (!monitorActive || !running) break
+
+                val reachable = hasWorkingOutbound(controller)
+                if (reachable) {
+                    failedRounds = 0
+                } else {
+                    failedRounds++
+                    if (failedRounds >= 2 && monitorActive && running) {
+                        monitorActive = false
+                        stopCore()
+                        sendBroadcast(
+                            Intent(ACTION_STATE).setPackage(packageName)
+                                .putExtra(EXTRA_STATE, "error")
+                                .putExtra(EXTRA_ERROR, "V2Ray server stopped responding or its access has expired")
+                        )
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopSelf()
+                        break
+                    }
+                }
+            }
+        }.apply {
+            name = "ONTunnel-V2Ray-Monitor"
+            isDaemon = true
+            start()
+        }
+    }
+
     private fun xudpBaseKey(): String {
         val prefs = getSharedPreferences("on_tunnel_core", MODE_PRIVATE)
         val flags = Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP
@@ -119,6 +185,7 @@ class ONTunnelVpnService : VpnService() {
     }
 
     private fun stopCore() {
+        monitorActive = false
         running = false
         try {
             core?.stopLoop()
