@@ -841,7 +841,6 @@ internal fun ONTunnelApp(
                                 passwordPurpose = null
                                 pendingImportText = null
                                    passwordInput = ""
-                                passwordConfirm = ""
                             } catch (e: Exception) { message(e.message ?: "Transfer failed") }
                         }) { Text("Unlock and import", color = Accent) }
                     },
@@ -849,7 +848,6 @@ internal fun ONTunnelApp(
                         TextButton(onClick = {
                             passwordPurpose = null
                             pendingImportText = null
-                            pendingTransferEntry = null
                         }) { Text("Cancel", color = TextMuted) }
                     }
                 )
