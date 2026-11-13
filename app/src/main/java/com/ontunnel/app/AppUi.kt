@@ -121,6 +121,12 @@ internal fun ONTunnelApp(
     var ovpnEditing by remember { mutableStateOf<OvpnEditorTarget?>(null) }
     var sshEditing by remember { mutableStateOf<SshEditorTarget?>(null) }
     var jsonEditing by remember { mutableStateOf<ServerEntry?>(null) }
+    var passwordPurpose by remember { mutableStateOf<String?>(null) }
+    var passwordInput by remember { mutableStateOf("") }
+    var passwordConfirm by remember { mutableStateOf("") }
+    var pendingTransferEntry by remember { mutableStateOf<ServerEntry?>(null) }
+    var pendingImportText by remember { mutableStateOf<String?>(null) }
+    var exportText by remember { mutableStateOf<String?>(null) }
 
     var dnsMode by remember { mutableStateOf(store.dnsMode) }
     var customDns by remember { mutableStateOf(store.customDns) }
@@ -212,28 +218,40 @@ internal fun ONTunnelApp(
         }
     }
 
+    fun addImported(imported: List<ServerEntry>) {
+        val fresh = imported.filterNot { candidate ->
+            servers.any { it.type == candidate.type && it.config == candidate.config }
+        }
+        if (fresh.isEmpty()) { message("These servers are already imported"); return }
+        saveServers(servers + fresh)
+        if (selectedId.isBlank()) select(fresh.first().id)
+        message("Imported ${fresh.size} server(s)")
+    }
+
+    fun shareText(title: String, value: String) {
+        try {
+            val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, value)
+            context.startActivity(Intent.createChooser(send, title))
+        } catch (e: Exception) { message(e.message ?: "No sharing app found") }
+    }
+
+    fun shareServerUri(entry: ServerEntry) {
+        try { shareText("Share ${entry.name} URI", ServerTransfer.shareUri(entry)) }
+        catch (e: Exception) { message(e.message ?: "This server cannot be shared as URI") }
+    }
+
+    fun shareServerJson(entry: ServerEntry) {
+        try { shareText("Share ${entry.name} JSON", ServerTransfer.export(listOf(entry))) }
+        catch (e: Exception) { message(e.message ?: "Could not prepare JSON") }
+    }
+
     fun importFromClipboard() {
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val text = cm.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()?.trim().orEmpty()
         if (text.isBlank()) { message("Clipboard is empty"); return }
         if (OvpnConfigTools.looksLikeOvpn(text)) { openOvpnEditorFromText(text); return }
-        val lines = if (text.startsWith("{")) listOf(text) else text.lines().map { it.trim() }.filter { it.isNotBlank() }
-        val list = servers.toMutableList()
-        var added = 0
-        for (line in lines) {
-            try {
-                val parsed = V2RayConfigParser.parse(line)
-                if (list.none { it.config == parsed.config }) {
-                    list += ServerEntry(name = parsed.name, config = parsed.config, uri = parsed.uri)
-                    added++
-                }
-            } catch (_: Exception) { }
-        }
-        if (added > 0) {
-            saveServers(list)
-            if (selectedId.isBlank()) select(list.last().id)
-            message("Imported $added server(s)")
-        } else message("No valid servers found in clipboard")
+        try { addImported(ServerTransfer.importText(text)) }
+        catch (e: Exception) { message(e.message ?: "No supported servers found in clipboard") }
     }
 
     val ovpnFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -247,6 +265,35 @@ internal fun ONTunnelApp(
                 message(e.message ?: "Could not import the file")
             }
         }
+    }
+
+    val serverFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) try {
+            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Cannot read file")
+            if (bytes.size > 5_000_000) error("Server file is too large")
+            val text = String(bytes, Charsets.UTF_8)
+            if (ServerTransfer.isLockedFile(text)) {
+                pendingImportText = text
+                passwordInput = ""
+                passwordPurpose = "import_file"
+            } else addImported(ServerTransfer.importText(text))
+        } catch (e: Exception) { message(e.message ?: "Could not import server file") }
+    }
+    val exportFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
+        if (uri != null) try {
+            val data = exportText ?: error("Nothing to export")
+            context.contentResolver.openOutputStream(uri)?.use { it.write(data.toByteArray(Charsets.UTF_8)) } ?: error("Cannot create file")
+            message("Server file exported")
+        } catch (e: Exception) { message(e.message ?: "Export failed") }
+        exportText = null
+    }
+    val lockedExportFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri: Uri? ->
+        if (uri != null) try {
+            val data = exportText ?: error("Nothing to export")
+            context.contentResolver.openOutputStream(uri)?.use { it.write(data.toByteArray(Charsets.UTF_8)) } ?: error("Cannot create file")
+            message("Locked server file exported")
+        } catch (e: Exception) { message(e.message ?: "Export failed") }
+        exportText = null
     }
 
     fun openEditor(e: ServerEntry) {
@@ -426,6 +473,34 @@ internal fun ONTunnelApp(
                                                 onClick = { menuOpen = false; importFromClipboard() }
                                             )
                                             DropdownMenuItem(
+                                                text = { Text("Import server file") },
+                                                leadingIcon = { Icon(Icons.Default.FolderOpen, null) },
+                                                onClick = { menuOpen = false; serverFilePicker.launch(arrayOf("*/*")) }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Export servers (JSON)") },
+                                                leadingIcon = { Icon(Icons.Default.FileDownload, null) },
+                                                enabled = servers.isNotEmpty(),
+                                                onClick = {
+                                                    menuOpen = false
+                                                    try {
+                                                        exportText = ServerTransfer.export(servers)
+                                                        exportFilePicker.launch("ON-Tunnel-servers.json")
+                                                    } catch (e: Exception) { message(e.message ?: "Export failed") }
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Export locked file") },
+                                                leadingIcon = { Icon(Icons.Default.Lock, null) },
+                                                enabled = servers.isNotEmpty(),
+                                                onClick = {
+                                                    menuOpen = false
+                                                    passwordInput = ""
+                                                    passwordConfirm = ""
+                                                    passwordPurpose = "export_all"
+                                                }
+                                            )
+                                            DropdownMenuItem(
                                                 text = { Text("Delete added servers") },
                                                 leadingIcon = { Icon(Icons.Default.Delete, null, tint = RedErr) },
                                                 onClick = { menuOpen = false; confirmDeleteAll = true }
@@ -563,15 +638,14 @@ internal fun ONTunnelApp(
                                                     message("Selected: ${entry.name}")
                                                 },
                                                 onEdit = { openEditor(entry) },
-                                                onCopyUri = {
-                                                    if (entry.isSsh) {
-                                                        message("SSH servers have no share link")
-                                                    } else if (entry.isOpenVpn) {
-                                                        OvpnProfile.fromJson(entry.config)?.let { copyText(".ovpn", it.config) }
-                                                    } else if (entry.uri.isNotBlank()) copyText("URI", entry.uri)
-                                                    else message("No link stored for this server – use Copy JSON")
+                                                onShareUri = { shareServerUri(entry) },
+                                                onShareJson = { shareServerJson(entry) },
+                                                onShareLockedJson = {
+                                                    pendingTransferEntry = entry
+                                                    passwordInput = ""
+                                                    passwordConfirm = ""
+                                                    passwordPurpose = "share_server"
                                                 },
-                                                onCopyJson = { copyText("JSON", entry.config) },
                                                 onDuplicate = {
                                                     val copy = entry.copy(
                                                         id = java.util.UUID.randomUUID().toString(),
@@ -733,6 +807,76 @@ internal fun ONTunnelApp(
                         } catch (e: Exception) {
                             Toast.makeText(context, e.message ?: "Invalid configuration", Toast.LENGTH_LONG).show()
                         }
+                    }
+                )
+            }
+
+            if (passwordPurpose != null) {
+                val importing = passwordPurpose == "import_file"
+                AlertDialog(
+                    onDismissRequest = {
+                        passwordPurpose = null
+                        pendingImportText = null
+                        pendingTransferEntry = null
+                        passwordInput = ""
+                        passwordConfirm = ""
+                    },
+                    containerColor = SurfaceC,
+                    title = { Text(if (importing) "Unlock server file" else "Set file password", color = TextMain) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                if (importing) "Enter the password used to lock this ON Tunnel file."
+                                else "Choose a password (at least 6 characters). Keep it safe; it cannot be recovered.",
+                                color = TextMuted,
+                                fontSize = 13.sp
+                            )
+                            OutlinedTextField(
+                                value = passwordInput,
+                                onValueChange = { passwordInput = it },
+                                label = { Text(if (importing) "Password" else "New password") },
+                                singleLine = true,
+                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
+                            )
+                            if (!importing) OutlinedTextField(
+                                value = passwordConfirm,
+                                onValueChange = { passwordConfirm = it },
+                                label = { Text("Confirm password") },
+                                singleLine = true,
+                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            try {
+                                if (importing) {
+                                    addImported(ServerTransfer.import(pendingImportText ?: error("Missing file"), passwordInput))
+                                } else {
+                                    require(passwordInput.length >= 6) { "Password must contain at least 6 characters" }
+                                    require(passwordInput == passwordConfirm) { "Passwords do not match" }
+                                    if (passwordPurpose == "share_server") {
+                                        val entry = pendingTransferEntry ?: error("Server not selected")
+                                        shareText("Share locked ${entry.name}", ServerTransfer.export(listOf(entry), passwordInput))
+                                    } else if (passwordPurpose == "export_all") {
+                                        exportText = ServerTransfer.export(servers, passwordInput)
+                                        lockedExportFilePicker.launch("ON-Tunnel-servers.otlock")
+                                    }
+                                }
+                                passwordPurpose = null
+                                pendingImportText = null
+                                pendingTransferEntry = null
+                                passwordInput = ""
+                                passwordConfirm = ""
+                            } catch (e: Exception) { message(e.message ?: "Transfer failed") }
+                        }) { Text(if (importing) "Unlock and import" else "Continue", color = Accent) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = {
+                            passwordPurpose = null
+                            pendingImportText = null
+                            pendingTransferEntry = null
+                        }) { Text("Cancel", color = TextMuted) }
                     }
                 )
             }
@@ -1061,8 +1205,9 @@ private fun ServerCard(
     selected: Boolean,
     onSelect: () -> Unit,
     onEdit: () -> Unit,
-    onCopyUri: () -> Unit,
-    onCopyJson: () -> Unit,
+    onShareUri: () -> Unit,
+    onShareJson: () -> Unit,
+    onShareLockedJson: () -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -1110,30 +1255,32 @@ private fun ServerCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            // Unlocked only: options menu (no protocol badge — same size as locked rows)
-            if (!entry.locked) {
-                Box {
-                    IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.MoreVert, "Options", tint = TextMuted, modifier = Modifier.size(18.dp))
-                    }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Edit") },
-                            leadingIcon = { Icon(Icons.Default.Edit, null) },
-                            onClick = { menu = false; onEdit() }
-                        )
-                        if (!entry.isSsh) DropdownMenuItem(
-                            text = { Text(if (entry.isOpenVpn) "Copy .ovpn" else "Copy link") },
-                            leadingIcon = { Icon(Icons.Default.ContentCopy, null) },
-                            onClick = { menu = false; onCopyUri() }
-                        )
-                        if (!entry.isOpenVpn && !entry.isSsh) {
-                            DropdownMenuItem(
-                                text = { Text("Copy JSON") },
-                                leadingIcon = { Icon(Icons.Default.ContentCopy, null) },
-                                onClick = { menu = false; onCopyJson() }
-                            )
-                        }
+            Box {
+                IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.MoreVert, "Options", tint = TextMuted, modifier = Modifier.size(18.dp))
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    if (!entry.locked) DropdownMenuItem(
+                        text = { Text("Edit") },
+                        leadingIcon = { Icon(Icons.Default.Edit, null) },
+                        onClick = { menu = false; onEdit() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Share URI") },
+                        leadingIcon = { Icon(Icons.Default.Share, null) },
+                        onClick = { menu = false; onShareUri() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Share JSON") },
+                        leadingIcon = { Icon(Icons.Default.Code, null) },
+                        onClick = { menu = false; onShareJson() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Share locked JSON") },
+                        leadingIcon = { Icon(Icons.Default.Lock, null) },
+                        onClick = { menu = false; onShareLockedJson() }
+                    )
+                    if (!entry.locked) {
                         DropdownMenuItem(
                             text = { Text("Duplicate") },
                             leadingIcon = { Icon(Icons.Default.Add, null) },
