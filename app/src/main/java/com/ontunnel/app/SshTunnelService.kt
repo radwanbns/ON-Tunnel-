@@ -46,6 +46,10 @@ class SshTunnelService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_HIDE_NOTIFICATION) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            return START_NOT_STICKY
+        }
         if (intent?.action != ACTION_START) return START_NOT_STICKY
         if (!AppIntegrity.isAppValid(this)) {
             report { onFailed?.invoke("App integrity check failed") }
@@ -200,6 +204,7 @@ class SshTunnelService : Service() {
     }
     companion object {
         const val ACTION_START = "com.ontunnel.app.SSH_START"
+        const val ACTION_HIDE_NOTIFICATION = "com.ontunnel.app.SSH_HIDE_NOTIFICATION"
         const val EXTRA_PROFILE = "profile"
         const val NOTIFICATION_ID = 7003
 
@@ -218,6 +223,12 @@ class SshTunnelService : Service() {
 
         fun stop(context: Context) {
             context.stopService(Intent(context, SshTunnelService::class.java))
+        }
+
+        fun hideNotification(context: Context) {
+            context.startService(
+                Intent(context, SshTunnelService::class.java).setAction(ACTION_HIDE_NOTIFICATION)
+            )
         }
     }
 }
