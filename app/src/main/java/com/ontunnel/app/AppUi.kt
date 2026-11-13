@@ -1177,6 +1177,25 @@ private fun MoreScreen(
         Triple("WhatsApp", "https://wa.me/0000000000", Icons.Default.Chat),
         Triple("Facebook", "https://facebook.com/your_page", Icons.Default.Public)
     )
+    val proxyPrefs = remember { context.getSharedPreferences(ProxyShareService.PREFS, Context.MODE_PRIVATE) }
+    var httpEnabled by remember { mutableStateOf(proxyPrefs.getBoolean("http_running", false)) }
+    var socksEnabled by remember { mutableStateOf(proxyPrefs.getBoolean("socks_running", false)) }
+    var proxyIp by remember { mutableStateOf(proxyPrefs.getString("local_ip", "").orEmpty()) }
+    var httpPortText by remember { mutableStateOf(proxyPrefs.getInt("http_port", ProxyShareService.DEFAULT_HTTP_PORT).toString()) }
+    var socksPortText by remember { mutableStateOf(proxyPrefs.getInt("socks_port", ProxyShareService.DEFAULT_SOCKS_PORT).toString()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            httpEnabled = proxyPrefs.getBoolean("http_running", false)
+            socksEnabled = proxyPrefs.getBoolean("socks_running", false)
+            proxyIp = proxyPrefs.getString("local_ip", "").orEmpty()
+            delay(1000)
+        }
+    }
+    fun copyProxy(label: String, value: String) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText(label, value))
+        Toast.makeText(context, "$label copied", Toast.LENGTH_SHORT).show()
+    }
     Scaffold(
         containerColor = Bg,
         topBar = {
@@ -1223,6 +1242,82 @@ private fun MoreScreen(
                         Text(label, color = TextMain, fontSize = 15.sp)
                     }
                 }
+            }
+        }
+        item {
+            SettingsCard(title = "Internet sharing") {
+                Text(
+                    "Share this phone's connection with devices on the same Wi-Fi network or hotspot. Keep sharing off on public networks.",
+                    color = TextMuted, fontSize = 12.sp
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = httpPortText,
+                    onValueChange = { httpPortText = it.filter(Char::isDigit).take(5) },
+                    label = { Text("HTTP proxy port") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("HTTP Proxy", color = TextMain, fontWeight = FontWeight.SemiBold)
+                        Text(if (httpEnabled) "Running at $proxyIp:$httpPortText" else "Stopped", color = TextMuted, fontSize = 12.sp)
+                    }
+                    Switch(
+                        checked = httpEnabled,
+                        onCheckedChange = { enabled ->
+                            if (enabled) {
+                                val port = httpPortText.toIntOrNull()
+                                if (port == null || port !in 1024..65535) {
+                                    Toast.makeText(context, "Enter a port from 1024 to 65535", Toast.LENGTH_SHORT).show()
+                                } else ProxyShareService.start(context, "http", port)
+                            } else ProxyShareService.stop(context, "http")
+                        }
+                    )
+                }
+                if (httpEnabled && proxyIp.isNotBlank()) {
+                    TextButton(onClick = { copyProxy("HTTP proxy", proxyIp + ":" + httpPortText) }) {
+                        Icon(Icons.Default.ContentCopy, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Copy HTTP address")
+                    }
+                }
+                Divider(color = TextMuted.copy(alpha = 0.2f))
+                OutlinedTextField(
+                    value = socksPortText,
+                    onValueChange = { socksPortText = it.filter(Char::isDigit).take(5) },
+                    label = { Text("SOCKS5 proxy port") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("SOCKS5 Proxy", color = TextMain, fontWeight = FontWeight.SemiBold)
+                        Text(if (socksEnabled) "Running at $proxyIp:$socksPortText" else "Stopped", color = TextMuted, fontSize = 12.sp)
+                    }
+                    Switch(
+                        checked = socksEnabled,
+                        onCheckedChange = { enabled ->
+                            if (enabled) {
+                                val port = socksPortText.toIntOrNull()
+                                if (port == null || port !in 1024..65535) {
+                                    Toast.makeText(context, "Enter a port from 1024 to 65535", Toast.LENGTH_SHORT).show()
+                                } else ProxyShareService.start(context, "socks", port)
+                            } else ProxyShareService.stop(context, "socks")
+                        }
+                    )
+                }
+                if (socksEnabled && proxyIp.isNotBlank()) {
+                    TextButton(onClick = { copyProxy("SOCKS5 proxy", "socks5://" + proxyIp + ":" + socksPortText) }) {
+                        Icon(Icons.Default.ContentCopy, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Copy SOCKS5 address")
+                    }
+                }
+                Text(
+                    "The proxy listens on the phone's private network address. Other devices on this network can use it; no username or password is required.",
+                    color = TextMuted, fontSize = 11.sp
+                )
             }
         }
         item {
