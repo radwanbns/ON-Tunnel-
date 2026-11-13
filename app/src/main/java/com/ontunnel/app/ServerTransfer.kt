@@ -149,7 +149,7 @@ object ServerTransfer {
             if (entry.uri.isNotBlank()) return entry.uri
             val encoded = Base64.encodeToString(entry.config.toByteArray(Charsets.UTF_8),
                 Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
-            return "v2ray://$encoded#\${enc(entry.name)}"
+            return "v2ray://$encoded#${enc(entry.name)}"
         }
         val profileJson = when (entry.type) {
             ServerEntry.TYPE_OPENVPN -> OvpnProfile.fromJson(entry.config)?.toJson()?.toString()
@@ -164,11 +164,11 @@ object ServerTransfer {
                 val p = OvpnProfile.fromJson(entry.config)!!
                 val host = p.serverOverride.ifBlank { p.remote?.host.orEmpty() }
                 val port = p.remote?.port ?: 1194
-                "ovpn://\${enc(p.username)}:\${enc(p.password)}@$host:$port?mode=\${enc(p.mode)}&proxy=\${enc(p.proxyHost)}%3A\${p.proxyPort}&profile=$encoded&locked=0#$name"
+                "ovpn://${enc(p.username)}:${enc(p.password)}@$host:$port?mode=${enc(p.mode)}&proxy=${enc(p.proxyHost)}%3A${p.proxyPort}&profile=$encoded&locked=0#$name"
             }
             ServerEntry.TYPE_SSH -> {
                 val p = SshProfile.fromJson(entry.config)!!
-                "ssh://\${enc(p.username)}:\${enc(p.password)}@\${p.host}:\${p.port}?mode=\${enc(p.mode)}&proxy=\${enc(p.proxyHost)}%3A\${p.proxyPort}&profile=$encoded&locked=0#$name"
+                "ssh://${enc(p.username)}:${enc(p.password)}@${p.host}:${p.port}?mode=${enc(p.mode)}&proxy=${enc(p.proxyHost)}%3A${p.proxyPort}&profile=$encoded&locked=0#$name"
             }
             else -> error("Unsupported server type")
         }
