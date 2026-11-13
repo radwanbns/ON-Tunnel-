@@ -799,9 +799,8 @@ internal fun ONTunnelApp(
                             openOvpnEditorFromText(text)
                         } else {
                             try {
-                                addParsed(V2RayConfigParser.parse(text))
+                                addImported(ServerTransfer.importText(text))
                                 showPaste = false
-                                Toast.makeText(context, "Server added", Toast.LENGTH_SHORT).show()
                             } catch (e: Exception) {
                                 Toast.makeText(context, e.message ?: "Invalid configuration", Toast.LENGTH_LONG).show()
                             }
