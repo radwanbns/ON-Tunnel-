@@ -831,6 +831,17 @@ internal fun ONTunnelApp(
                         if (OvpnConfigTools.looksLikeOvpn(text)) {
                             showPaste = false
                             openOvpnEditorFromText(text)
+                        } else if (ServerTransfer.isCotFile(text)) {
+                            try {
+                                if (ServerTransfer.isLockedCotFile(text)) {
+                                    pendingImportText = text
+                                    passwordInput = ""
+                                    passwordPurpose = "import_cot"
+                                } else addImported(listOf(ServerTransfer.importCot(text)))
+                                showPaste = false
+                            } catch (e: Exception) {
+                                Toast.makeText(context, e.message ?: "Invalid .cot file", Toast.LENGTH_LONG).show()
+                            }
                         } else if (ServerTransfer.isLockedFile(text)) {
                             pendingImportText = text
                             passwordInput = ""
@@ -880,7 +891,7 @@ internal fun ONTunnelApp(
                     text = {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
-                                "Enter the password used to lock this ON Tunnel file.",
+                                if (passwordPurpose == "import_cot") "Enter the password used to lock this .cot server file." else "Enter the password used to lock this ON Tunnel file.",
                                 color = TextMuted,
                                 fontSize = 13.sp
                             )
@@ -896,7 +907,12 @@ internal fun ONTunnelApp(
                     confirmButton = {
                         TextButton(onClick = {
                             try {
-                                addImported(ServerTransfer.importServers(pendingImportText ?: error("Missing file"), passwordInput))
+                                val pending = pendingImportText ?: error("Missing file")
+                                if (passwordPurpose == "import_cot") {
+                                    addImported(listOf(ServerTransfer.importCot(pending, passwordInput)))
+                                } else {
+                                    addImported(ServerTransfer.importServers(pending, passwordInput))
+                                }
                                 passwordPurpose = null
                                 pendingImportText = null
                                    passwordInput = ""
