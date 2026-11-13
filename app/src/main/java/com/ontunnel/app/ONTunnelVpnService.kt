@@ -118,7 +118,6 @@ class ONTunnelVpnService : VpnService() {
     }
 
     private fun stopCore() {
-        monitorActive = false
         running = false
         try {
             core?.stopLoop()
