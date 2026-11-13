@@ -278,24 +278,37 @@ internal fun ONTunnelApp(
     }
 
     fun importFromClipboard() {
-        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val text = cm.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()?.trim().orEmpty()
-        if (text.isBlank()) { message("Clipboard is empty"); return }
-        if (ServerTransfer.isCotFile(text)) {
-            try {
-                beginCotImport(text)
-            } catch (e: Exception) { message(e.message ?: "Could not import .cot file") }
-            return
+        try {
+            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val text = cm.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()?.trim().orEmpty()
+            if (text.isBlank()) {
+                message("Clipboard is empty")
+                return
+            }
+            when {
+                ServerTransfer.isCotFile(text) -> {
+                    beginCotImport(text)
+                }
+                OvpnConfigTools.looksLikeOvpn(text) -> {
+                    openOvpnEditorFromText(text)
+                }
+                ServerTransfer.isLockedFile(text) -> {
+                    pendingImportText = text
+                    passwordInput = ""
+                    passwordPurpose = "import_file"
+                }
+                else -> {
+                    val imported = ServerTransfer.importText(text)
+                    if (imported.isEmpty()) {
+                        message("No supported servers found in clipboard")
+                    } else {
+                        addImported(imported)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            message(e.message?.takeIf { it.isNotBlank() } ?: "No supported servers found in clipboard")
         }
-        if (OvpnConfigTools.looksLikeOvpn(text)) { openOvpnEditorFromText(text); return }
-        if (ServerTransfer.isLockedFile(text)) {
-            pendingImportText = text
-            passwordInput = ""
-            passwordPurpose = "import_file"
-            return
-        }
-        try { addImported(ServerTransfer.importText(text)) }
-        catch (e: Exception) { message(e.message ?: "No supported servers found in clipboard") }
     }
 
     LaunchedEffect(incomingServerFileUri) {
