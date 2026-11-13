@@ -25,15 +25,9 @@ android {
             }
         }
 
-        // ABI set is selected by the build workflow:
-        // ARM build creates the ARM-only Universal APK; x86 build creates x86 split APKs.
-        val selectedAbis = (project.findProperty("ABI_FILTERS") as? String)
-            ?.split(";")?.filter { it.isNotBlank() }
-            ?: listOf("arm64-v8a", "armeabi-v7a")
-        ndk {
-            abiFilters.clear()
-            abiFilters.addAll(selectedAbis)
-        }
+        // ABI selection is controlled only by splits. Do not also set ndk.abiFilters:
+        // Android Gradle Plugin rejects simultaneous ndk.abiFilters and splits.abi filters.
+
     }
 
     externalNativeBuild {
