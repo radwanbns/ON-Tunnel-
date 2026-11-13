@@ -187,13 +187,12 @@ class ProxyShareService : Service() {
         b.soTimeout = 0
         val executor = Executors.newFixedThreadPool(2)
         try {
-            val first = executor.submit { pipe(a, b) }
-            val second = executor.submit { pipe(b, a) }
-            try { first.get() } catch (_: Exception) { }
-            // Closing both endpoints after one direction ends releases the opposite reader.
-            try { a.close() } catch (_: Exception) { }
-            try { b.close() } catch (_: Exception) { }
-            try { second.get() } catch (_: Exception) { }
+            // Finish the tunnel when either direction closes, then release the other reader.
+            executor.invokeAny(listOf(
+                java.util.concurrent.Callable { pipe(a, b) },
+                java.util.concurrent.Callable { pipe(b, a) }
+            ))
+        } catch (_: Exception) {
         } finally {
             try { a.close() } catch (_: Exception) { }
             try { b.close() } catch (_: Exception) { }
