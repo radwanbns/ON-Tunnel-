@@ -18,6 +18,7 @@ object ServerTransfer {
     private const val LOCKED_FORMAT = "ontunnel-servers-locked"
     private const val VERSION = 1
     private const val ITERATIONS = 210_000
+    private const val COT_HEADER = "ON-TUNNEL-COT/1"
 
     fun export(entries: List<ServerEntry>, password: String? = null): String {
         require(entries.isNotEmpty()) { "There are no servers to export" }
@@ -51,7 +52,7 @@ object ServerTransfer {
         JSONObject(text.trim()).optString("format") == LOCKED_FORMAT
     }.getOrDefault(false)
 
-    fun importServers(text: String, password: String? = null): List<ServerEntry> {
+    fun importServers(text: String, password: String? = null, preserveLock: Boolean = false): List<ServerEntry> {
         val raw = text.trim()
         require(raw.isNotEmpty()) { "File is empty" }
         val root = JSONObject(raw)
@@ -82,10 +83,40 @@ object ServerTransfer {
             val source = array.optJSONObject(i) ?: continue
             val entry = ServerEntry.fromJson(source) ?: continue
             // Imported servers are always local/editable, never subscription-locked.
-            result += entry.copy(id = java.util.UUID.randomUUID().toString(), locked = false)
+            result += entry.copy(id = java.util.UUID.randomUUID().toString(), locked = preserveLock && (entry.locked || format == LOCKED_FORMAT), subscription = false)
         }
         require(result.isNotEmpty()) { "No valid servers found in this file" }
         return result
+    }
+
+    /** True when the content uses the ON Tunnel .cot single-server container. */
+    fun isCotFile(text: String): Boolean = text.trimStart().startsWith(COT_HEADER + "\n")
+
+    fun isLockedCotFile(text: String): Boolean =
+        isCotFile(text) && text.trim().lineSequence().drop(1).firstOrNull() == "L"
+
+    /** Export exactly one server, with an optional HTML note and optional password lock. */
+    fun exportCot(entry: ServerEntry, noteHtml: String, password: String? = null): String {
+        require(noteHtml.length <= 100_000) { "HTML note is too large" }
+        val portable = entry.copy(noteHtml = noteHtml, locked = false, subscription = false)
+        val payload = export(listOf(portable), password)
+        val mode = if (password.isNullOrEmpty()) "U" else "L"
+        val encoded = Base64.encodeToString(payload.toByteArray(Charsets.UTF_8), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+        return COT_HEADER + "\n" + mode + "\n" + encoded
+    }
+
+    /** Import one .cot server and preserve its locked/unlocked state and HTML note. */
+    fun importCot(text: String, password: String? = null): ServerEntry {
+        val raw = text.trim()
+        require(isCotFile(raw)) { "Not an ON Tunnel .cot file" }
+        val lines = raw.lineSequence().toList()
+        require(lines.size >= 3) { "Invalid .cot file" }
+        val mode = lines[1].trim()
+        require(mode == "U" || mode == "L") { "Unsupported .cot file mode" }
+        val payload = String(Base64.decode(lines.drop(2).joinToString("").trim(), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING), Charsets.UTF_8)
+        val imported = importServers(payload, password, preserveLock = true)
+        require(imported.size == 1) { "A .cot file must contain exactly one server" }
+        return imported.single().copy(locked = mode == "L", subscription = false)
     }
 
     /**
