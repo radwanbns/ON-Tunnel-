@@ -75,7 +75,9 @@ class ONTunnelVpnService : VpnService() {
             updateNotification("$protocolLabel Connected")
             if (protocolLabel == "SSH") SshTunnelService.hideNotification(this)
             sendBroadcast(
-                Intent(ACTION_STATE).setPackage(packageName).putExtra(EXTRA_STATE, "connected")
+                Intent(ACTION_STATE).setPackage(packageName)
+                    .putExtra(EXTRA_STATE, "connected")
+                    .putExtra(EXTRA_PROTOCOL, protocolLabel)
             )
         } catch (e: Exception) {
             stopCore()
@@ -173,6 +175,7 @@ class ONTunnelVpnService : VpnService() {
         const val EXTRA_PROTOCOL = "protocol"
         const val EXTRA_STATE = "state"
         const val EXTRA_ERROR = "error"
+        const val EXTRA_PROTOCOL = "protocol"
         const val NOTIFICATION_ID = 7001
 
         @Volatile
