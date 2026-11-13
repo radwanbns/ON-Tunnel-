@@ -17,8 +17,7 @@ internal data class AppUpdateInfo(
 )
 
 internal object AppUpdater {
-    private const val RELEASE_API =
-        "https://api.github.com/repos/radwanbns/ON-Tunnel-/releases/latest"
+    private val RELEASE_API: String get() = SecureStrings.releaseApiUrl
 
     /**
      * Release convention:
@@ -57,7 +56,7 @@ internal object AppUpdater {
             for (i in 0 until assets.length()) {
                 val asset = assets.optJSONObject(i) ?: continue
                 if (asset.optString("name") == "ON-Tunnel-$abi.apk") {
-                    downloadUrl = asset.optString("browser_download_url").takeIf { it.startsWith("https://") }
+                    downloadUrl = asset.optString("browser_download_url").takeIf { it.startsWith(SecureStrings.httpsPrefix) }
                     break
                 }
             }
