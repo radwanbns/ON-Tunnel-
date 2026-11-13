@@ -1016,7 +1016,7 @@ internal fun ONTunnelApp(
                                 pendingImportText = null
                                    passwordInput = ""
                             } catch (e: Exception) { message(e.message ?: "Transfer failed") }
-                        }) { Text("Unlock and import", color = Accent) }
+                        }) { Text(if (passwordPurpose == "import_cot") "Import server" else "Unlock and import", color = Accent) }
                     },
                     dismissButton = {
                         TextButton(onClick = {
