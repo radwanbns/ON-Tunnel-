@@ -1383,7 +1383,7 @@ private fun fetchAndParseSubscription(url: String): Result<List<ServerEntry>> = 
     for (line in lines) {
         try {
             val parsed = V2RayConfigParser.parse(line)
-            entries += ServerEntry(name = parsed.name, config = parsed.config, uri = "", locked = true)
+            entries += ServerEntry(name = parsed.name, config = parsed.config, uri = parsed.uri, locked = true)
         } catch (e: Exception) {
             errors += (e.message ?: "parse error")
         }
