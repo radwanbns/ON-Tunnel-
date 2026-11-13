@@ -194,11 +194,14 @@ class MainActivity : ComponentActivity() {
                 if (cursor.moveToFirst() &&
                     cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) == DownloadManager.STATUS_SUCCESSFUL
                 ) {
+                    updateProgress = 100
+                    updateDownloading = false
                     getSharedPreferences("app_update", MODE_PRIVATE).edit()
                         .putBoolean("pending_install", true).apply()
                     installDownloadedUpdate()
                 } else {
-                    updateDownloading = false\n                    Toast.makeText(this@MainActivity, "Update download failed", Toast.LENGTH_LONG).show()
+                    updateDownloading = false
+                    Toast.makeText(this@MainActivity, "Update download failed", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -238,7 +241,8 @@ class MainActivity : ComponentActivity() {
             availableAppUpdate = null
 
         } catch (e: Exception) {
-            updateDownloading = false\n            Toast.makeText(this, "Could not start update: ${e.message}", Toast.LENGTH_LONG).show()
+            updateDownloading = false
+            Toast.makeText(this, "Could not start update: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -319,7 +323,9 @@ class MainActivity : ComponentActivity() {
                 onDismissOvpnMissing = { ovpnMissing = false },
                 onOpenOvpnStore = ::openOvpnStore,
                 appUpdate = availableAppUpdate,
-                onDownloadAppUpdate = ::startAppUpdateDownload,\n                updateDownloading = updateDownloading,\n                updateProgress = updateProgress,
+                onDownloadAppUpdate = ::startAppUpdateDownload,
+                updateDownloading = updateDownloading,
+                updateProgress = updateProgress,
                 onDismissAppUpdate = { availableAppUpdate = null },
                 incomingServerFileUri = incomingServerFileUri,
                 onIncomingFileHandled = { incomingServerFileUri = null }
