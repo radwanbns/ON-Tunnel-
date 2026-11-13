@@ -229,12 +229,12 @@ internal fun ONTunnelApp(
     }
 
     fun shareServerUri(entry: ServerEntry, locked: Boolean) {
-        try { copyText("URI", ServerTransfer.shareUri(entry, locked)); Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show() }
+        try { val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager; cm.setPrimaryClip(ClipData.newPlainText("URI", ServerTransfer.shareUri(entry, locked))); Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show() }
         catch (e: Exception) { message(e.message ?: "This server cannot be copied as URI") }
     }
 
     fun shareServerJson(entry: ServerEntry) {
-        try { copyText("JSON", ServerTransfer.export(listOf(entry))); Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show() }
+        try { val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager; cm.setPrimaryClip(ClipData.newPlainText("JSON", ServerTransfer.export(listOf(entry)))); Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show() }
         catch (e: Exception) { message(e.message ?: "Could not copy JSON") }
     }
 
