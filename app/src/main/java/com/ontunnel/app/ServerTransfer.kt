@@ -88,33 +88,28 @@ object ServerTransfer {
         return result
     }
 
-    /** URI for every engine. V2Ray uses its standard URI; SSH/OpenVPN use portable ON Tunnel URIs. */
-    fun shareUri(entry: ServerEntry): String {
-        if (entry.type == ServerEntry.TYPE_V2RAY) {
-            if (entry.uri.isNotBlank()) return entry.uri
-            error("This V2Ray entry has no share URI; share it as JSON")
-        }
+    /**
+     * Portable URI for all protocols. Locked means read-only inside ON Tunnel; no password is used.
+     */
+    fun shareUri(entry: ServerEntry, locked: Boolean): String {
+        val payload = entry.copy(id = "", locked = locked).toJson().toString()
         val encoded = Base64.encodeToString(
-            entry.toJson().toString().toByteArray(Charsets.UTF_8),
+            payload.toByteArray(Charsets.UTF_8),
             Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
         )
-        return when (entry.type) {
-            ServerEntry.TYPE_SSH -> "ontunnel+ssh://$encoded"
-            ServerEntry.TYPE_OPENVPN -> "ontunnel+openvpn://$encoded"
-            else -> error("Unsupported server type")
-        }
+        return "ontunnel://server/$encoded"
     }
 
     fun importText(text: String): List<ServerEntry> {
         val raw = text.trim()
-        if (raw.startsWith("ontunnel+ssh://") || raw.startsWith("ontunnel+openvpn://")) {
-            val body = raw.substringAfter("://")
+        if (raw.startsWith("ontunnel://server/")) {
+            val body = raw.substringAfter("ontunnel://server/")
             val decoded = String(
                 Base64.decode(body, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING),
                 Charsets.UTF_8
             )
-            return importServers(JSONObject().put("format", FORMAT).put("version", VERSION)
-                .put("servers", JSONArray().put(JSONObject(decoded))).toString())
+            val entry = ServerEntry.fromJson(JSONObject(decoded)) ?: error("Invalid ON Tunnel URI")
+            return listOf(entry.copy(id = java.util.UUID.randomUUID().toString()))
         }
         if (raw.startsWith("{")) {
             val json = JSONObject(raw)
