@@ -100,7 +100,9 @@ internal fun ONTunnelApp(
     onOpenOvpnStore: () -> Unit,
     appUpdate: AppUpdateInfo?,
     onDownloadAppUpdate: (AppUpdateInfo) -> Unit,
-    onDismissAppUpdate: () -> Unit
+    onDismissAppUpdate: () -> Unit,
+    incomingServerFileUri: Uri?,
+    onIncomingFileHandled: () -> Unit
 ) {
     val context = LocalContext.current
     val store = remember { ServerStore(context) }
@@ -252,6 +254,23 @@ internal fun ONTunnelApp(
         if (OvpnConfigTools.looksLikeOvpn(text)) { openOvpnEditorFromText(text); return }
         try { addImported(ServerTransfer.importText(text)) }
         catch (e: Exception) { message(e.message ?: "No supported servers found in clipboard") }
+    }
+
+    LaunchedEffect(incomingServerFileUri) {
+        val uri = incomingServerFileUri
+        if (uri != null) {
+            try {
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Cannot read file")
+                if (bytes.size > 5_000_000) error("Server file is too large")
+                val text = String(bytes, Charsets.UTF_8)
+                if (ServerTransfer.isLockedFile(text)) {
+                    pendingImportText = text
+                    passwordInput = ""
+                    passwordPurpose = "import_file"
+                } else addImported(ServerTransfer.importText(text))
+            } catch (e: Exception) { message(e.message ?: "Could not open server file") }
+            finally { onIncomingFileHandled() }
+        }
     }
 
     val ovpnFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
