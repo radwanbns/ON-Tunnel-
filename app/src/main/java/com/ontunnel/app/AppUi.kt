@@ -491,12 +491,17 @@ internal fun ONTunnelApp(
                                             DropdownMenuItem(
                                                 text = { Text("Export servers (JSON)") },
                                                 leadingIcon = { Icon(Icons.Default.FileDownload, null) },
-                                                enabled = servers.isNotEmpty(),
+                                                enabled = servers.any { !it.locked },
                                                 onClick = {
                                                     menuOpen = false
                                                     try {
-                                                        exportText = ServerTransfer.export(servers)
-                                                        exportFilePicker.launch("ON-Tunnel-servers.json")
+                                                        val addedServers = servers.filter { !it.locked }
+                                                        if (addedServers.isEmpty()) {
+                                                            message("No added servers to export")
+                                                        } else {
+                                                            exportText = ServerTransfer.export(addedServers)
+                                                            exportFilePicker.launch("ON-Tunnel-servers.json")
+                                                        }
                                                     } catch (e: Exception) { message(e.message ?: "Export failed") }
                                                 }
                                             )
