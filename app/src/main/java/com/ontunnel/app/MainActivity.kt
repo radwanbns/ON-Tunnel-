@@ -306,6 +306,7 @@ class MainActivity : ComponentActivity() {
         val intent = Intent(this, ONTunnelVpnService::class.java)
             .setAction(ONTunnelVpnService.ACTION_START)
             .putExtra(ONTunnelVpnService.EXTRA_CONFIG, config)
+            .putExtra(ONTunnelVpnService.EXTRA_PROTOCOL, activeProto)
         ContextCompat.startForegroundService(this, intent)
         status = VpnStatus.Connecting
     }
