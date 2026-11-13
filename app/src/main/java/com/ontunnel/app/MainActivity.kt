@@ -73,6 +73,8 @@ class MainActivity : ComponentActivity() {
     private var errorMessage by mutableStateOf<String?>(null)
     private var availableAppUpdate by mutableStateOf<AppUpdateInfo?>(null)
     private var updateDownloadId: Long = -1L
+    private var updateProgress by mutableStateOf(0)
+    private var updateDownloading by mutableStateOf(false)
 
     // ── OpenVPN (through the "OpenVPN for Android" remote API) ──────────
     private var statusDetail by mutableStateOf<String?>(null)
@@ -82,6 +84,24 @@ class MainActivity : ComponentActivity() {
     /** "" | "v2ray" | "openvpn" – which engine currently owns the tunnel. */
     private var activeProto = ""
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val updateProgressPoll = object : Runnable {
+        override fun run() {
+            val id = updateDownloadId
+            if (id < 0L) return
+            val manager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+            manager.query(DownloadManager.Query().setFilterById(id)).use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val downloaded = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+                    val total = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+                    if (total > 0L) updateProgress = ((downloaded * 100L) / total).toInt().coerceIn(0, 99)
+                    val state = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                    if (state == DownloadManager.STATUS_RUNNING || state == DownloadManager.STATUS_PENDING || state == DownloadManager.STATUS_PAUSED) {
+                        mainHandler.postDelayed(this, 400L)
+                    }
+                }
+            }
+        }
+    }
     private val ovpn = OpenVpnController(this) { state, message, level -> onOvpnStatus(state, message, level) }
     /** True from "Connect" until the user (or a fatal error) stops the OpenVPN tunnel. Drives auto-reconnect. */
     private var ovpnWanted = false
@@ -177,7 +197,7 @@ class MainActivity : ComponentActivity() {
                         .putBoolean("pending_install", true).apply()
                     installDownloadedUpdate()
                 } else {
-                    Toast.makeText(this@MainActivity, "Update download failed", Toast.LENGTH_LONG).show()
+                    updateDownloading = false\n                    Toast.makeText(this@MainActivity, "Update download failed", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -211,9 +231,9 @@ class MainActivity : ComponentActivity() {
             getSharedPreferences("app_update", MODE_PRIVATE).edit()
                 .putLong("download_id", updateDownloadId).apply()
             availableAppUpdate = null
-            Toast.makeText(this, "Downloading ON Tunnel update...", Toast.LENGTH_LONG).show()
+
         } catch (e: Exception) {
-            Toast.makeText(this, "Could not start update: ${e.message}", Toast.LENGTH_LONG).show()
+            updateDownloading = false\n            Toast.makeText(this, "Could not start update: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -290,7 +310,7 @@ class MainActivity : ComponentActivity() {
                 onDismissOvpnMissing = { ovpnMissing = false },
                 onOpenOvpnStore = ::openOvpnStore,
                 appUpdate = availableAppUpdate,
-                onDownloadAppUpdate = ::startAppUpdateDownload,
+                onDownloadAppUpdate = ::startAppUpdateDownload,\n                updateDownloading = updateDownloading,\n                updateProgress = updateProgress,
                 onDismissAppUpdate = { availableAppUpdate = null },
                 incomingServerFileUri = incomingServerFileUri,
                 onIncomingFileHandled = { incomingServerFileUri = null }
