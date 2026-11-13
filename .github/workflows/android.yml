@@ -1,4 +1,3 @@
-
 name: Android Build
 
 on:
@@ -25,9 +24,9 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      # Pure-Java core of the OpenVPN payload / WebSocket transport: compile + run its tests before building.
       - name: Test OpenVPN transport core
         run: |
+          set -euo pipefail
           mkdir -p /tmp/ovpn-core
           javac -Xlint:all -d /tmp/ovpn-core app/src/main/java/com/ontunnel/app/ovpn/*.java tools/ovpn-core-test/*.java
           java -cp /tmp/ovpn-core PayloadScenarios
@@ -41,6 +40,7 @@ jobs:
 
       - name: Create Debug keystore if missing
         run: |
+          set -euo pipefail
           mkdir -p ~/.android
           if [ ! -s ~/.android/debug.keystore ]; then
             keytool -genkeypair \
@@ -56,6 +56,7 @@ jobs:
 
       - name: Download Xray core
         run: |
+          set -euo pipefail
           mkdir -p app/libs
           curl -L --fail --retry 3 \
             "https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.31/libv2ray.aar" \
@@ -66,11 +67,9 @@ jobs:
         run: |
           set -euo pipefail
           sdkmanager="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
-
           if [ ! -x "$sdkmanager" ]; then
             sdkmanager="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
           fi
-
           yes | "$sdkmanager" --licenses || true
           "$sdkmanager" "ndk;27.2.12479018" "cmake;3.22.1"
 
@@ -108,312 +107,28 @@ jobs:
           x86_apk="staged-apks/ON-Tunnel-x86.apk"
           x86_64_apk="staged-apks/ON-Tunnel-x86_64.apk"
 
-          for apk in "$universal" "$x86_apk" "$x86_64_apk"; do
-            if [ ! -f "$apk" ]; then
-              echo "::error::Missing expected APK: $apk"
-              ls -lah staged-apks/
-              exit 1
-            fi
-            unzip -t "$apk"
-          done
-
-          entries="$(unzip -Z1 "$universal")"
-          grep -q '^lib/arm64-v8a/.*\.so
-      - name: Verify signatures
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          expected="$(keytool -list -v \
-            -keystore ~/.android/debug.keystore \
-            -storepass android \
-            -alias androiddebugkey |
-            awk -F': ' '/SHA256:/{print $2; exit}' |
-            tr -d ':' | tr '[:lower:]' '[:upper:]')"
-
-          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
-
-          count=0
-
           for apk in staged-apks/*.apk; do
-            [ -f "$apk" ] || continue
-
-            echo "Checking: $apk"
-
+            test -f "$apk"
             unzip -t "$apk" >/dev/null
-
-            output="$("$apksigner" verify --print-certs "$apk")"
-            echo "$output"
-
-            actual="$(echo "$output" |
-              awk '/certificate SHA-256 digest:/ {print $NF; exit}' |
-              tr -d ':' | tr '[:lower:]' '[:upper:]')"
-
-            if [ "$actual" != "$expected" ]; then
-              echo "::error::Invalid APK signature."
-              exit 1
-            fi
-
-            count=$((count + 1))
           done
 
-          test "$count" -gt 0
-          echo "All APK files passed verification."
-
-      - name: Upload APK artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ON-Tunnel-All-ABIs
-          path: staged-apks/*.apk
-          if-no-files-found: error
-
-      - name: Prepare GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          set -euo pipefail
-          mkdir -p release
-          cp staged-apks/*.apk release/
-
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          name: ON Tunnel ${{ github.ref_name }}
-          generate_release_notes: true
-          files: release/*.apk
- <<< "$entries" || { echo "::error::arm64-v8a missing from Universal."; exit 1; }
-          grep -q '^lib/armeabi-v7a/.*\.so
-      - name: Verify signatures
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          expected="$(keytool -list -v \
-            -keystore ~/.android/debug.keystore \
-            -storepass android \
-            -alias androiddebugkey |
-            awk -F': ' '/SHA256:/{print $2; exit}' |
-            tr -d ':' | tr '[:lower:]' '[:upper:]')"
-
-          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
-
-          count=0
-
-          for apk in app/build/outputs/apk/debug/*.apk; do
-            [ -f "$apk" ] || continue
-
-            echo "Checking: $apk"
-
-            unzip -t "$apk" >/dev/null
-
-            output="$("$apksigner" verify --print-certs "$apk")"
-            echo "$output"
-
-            actual="$(echo "$output" |
-              awk '/certificate SHA-256 digest:/ {print $NF; exit}' |
-              tr -d ':' | tr '[:lower:]' '[:upper:]')"
-
-            if [ "$actual" != "$expected" ]; then
-              echo "::error::Invalid APK signature."
-              exit 1
-            fi
-
-            count=$((count + 1))
-          done
-
-          test "$count" -gt 0
-          echo "All APK files passed verification."
-
-      - name: Upload APK artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ON-Tunnel-ARM
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-
-      - name: Prepare GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          set -euo pipefail
-          mkdir -p release
-
-          cp app/build/outputs/apk/debug/app-universal-debug.apk \
-             release/ON-Tunnel-Universal.apk
-
-          cp app/build/outputs/apk/debug/app-arm64-v8a-debug.apk \
-             release/ON-Tunnel-arm64-v8a.apk
-
-          cp app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk \
-             release/ON-Tunnel-armeabi-v7a.apk
-
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          name: ON Tunnel ${{ github.ref_name }}
-          generate_release_notes: true
-          files: release/*.apk
- <<< "$entries" || { echo "::error::armeabi-v7a missing from Universal."; exit 1; }
-          if grep -Eq '^lib/(x86|x86_64)/' <<< "$entries"; then
+          universal_entries="$(unzip -Z1 "$universal")"
+          grep -q '^lib/arm64-v8a/.*\.so$' <<< "$universal_entries"
+          grep -q '^lib/armeabi-v7a/.*\.so$' <<< "$universal_entries"
+          if grep -Eq '^lib/(x86|x86_64)/' <<< "$universal_entries"; then
             echo "::error::Universal APK must remain ARM-only."
             exit 1
           fi
 
           x86_entries="$(unzip -Z1 "$x86_apk")"
-          grep -q '^lib/x86/.*\.so
-      - name: Verify signatures
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          expected="$(keytool -list -v \
-            -keystore ~/.android/debug.keystore \
-            -storepass android \
-            -alias androiddebugkey |
-            awk -F': ' '/SHA256:/{print $2; exit}' |
-            tr -d ':' | tr '[:lower:]' '[:upper:]')"
-
-          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
-
-          count=0
-
-          for apk in app/build/outputs/apk/debug/*.apk; do
-            [ -f "$apk" ] || continue
-
-            echo "Checking: $apk"
-
-            unzip -t "$apk" >/dev/null
-
-            output="$("$apksigner" verify --print-certs "$apk")"
-            echo "$output"
-
-            actual="$(echo "$output" |
-              awk '/certificate SHA-256 digest:/ {print $NF; exit}' |
-              tr -d ':' | tr '[:lower:]' '[:upper:]')"
-
-            if [ "$actual" != "$expected" ]; then
-              echo "::error::Invalid APK signature."
-              exit 1
-            fi
-
-            count=$((count + 1))
-          done
-
-          test "$count" -gt 0
-          echo "All APK files passed verification."
-
-      - name: Upload APK artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ON-Tunnel-ARM
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-
-      - name: Prepare GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          set -euo pipefail
-          mkdir -p release
-
-          cp app/build/outputs/apk/debug/app-universal-debug.apk \
-             release/ON-Tunnel-Universal.apk
-
-          cp app/build/outputs/apk/debug/app-arm64-v8a-debug.apk \
-             release/ON-Tunnel-arm64-v8a.apk
-
-          cp app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk \
-             release/ON-Tunnel-armeabi-v7a.apk
-
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          name: ON Tunnel ${{ github.ref_name }}
-          generate_release_notes: true
-          files: release/*.apk
- <<< "$x86_entries" || { echo "::error::x86 libraries missing."; exit 1; }
+          grep -q '^lib/x86/.*\.so$' <<< "$x86_entries"
           if grep -Eq '^lib/(arm64-v8a|armeabi-v7a|x86_64)/' <<< "$x86_entries"; then
             echo "::error::Unexpected ABI found in x86 APK."
             exit 1
           fi
 
           x86_64_entries="$(unzip -Z1 "$x86_64_apk")"
-          grep -q '^lib/x86_64/.*\.so
-      - name: Verify signatures
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          expected="$(keytool -list -v \
-            -keystore ~/.android/debug.keystore \
-            -storepass android \
-            -alias androiddebugkey |
-            awk -F': ' '/SHA256:/{print $2; exit}' |
-            tr -d ':' | tr '[:lower:]' '[:upper:]')"
-
-          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
-
-          count=0
-
-          for apk in app/build/outputs/apk/debug/*.apk; do
-            [ -f "$apk" ] || continue
-
-            echo "Checking: $apk"
-
-            unzip -t "$apk" >/dev/null
-
-            output="$("$apksigner" verify --print-certs "$apk")"
-            echo "$output"
-
-            actual="$(echo "$output" |
-              awk '/certificate SHA-256 digest:/ {print $NF; exit}' |
-              tr -d ':' | tr '[:lower:]' '[:upper:]')"
-
-            if [ "$actual" != "$expected" ]; then
-              echo "::error::Invalid APK signature."
-              exit 1
-            fi
-
-            count=$((count + 1))
-          done
-
-          test "$count" -gt 0
-          echo "All APK files passed verification."
-
-      - name: Upload APK artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ON-Tunnel-ARM
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-
-      - name: Prepare GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          set -euo pipefail
-          mkdir -p release
-
-          cp app/build/outputs/apk/debug/app-universal-debug.apk \
-             release/ON-Tunnel-Universal.apk
-
-          cp app/build/outputs/apk/debug/app-arm64-v8a-debug.apk \
-             release/ON-Tunnel-arm64-v8a.apk
-
-          cp app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk \
-             release/ON-Tunnel-armeabi-v7a.apk
-
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          name: ON Tunnel ${{ github.ref_name }}
-          generate_release_notes: true
-          files: release/*.apk
- <<< "$x86_64_entries" || { echo "::error::x86_64 libraries missing."; exit 1; }
+          grep -q '^lib/x86_64/.*\.so$' <<< "$x86_64_entries"
           if grep -Eq '^lib/(arm64-v8a|armeabi-v7a|x86)/' <<< "$x86_64_entries"; then
             echo "::error::Unexpected ABI found in x86_64 APK."
             exit 1
@@ -435,39 +150,29 @@ jobs:
 
           sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
           apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$apksigner"
 
           count=0
-
-          for apk in app/build/outputs/apk/debug/*.apk; do
-            [ -f "$apk" ] || continue
-
+          for apk in staged-apks/*.apk; do
             echo "Checking: $apk"
-
-            unzip -t "$apk" >/dev/null
-
             output="$("$apksigner" verify --print-certs "$apk")"
-            echo "$output"
-
             actual="$(echo "$output" |
               awk '/certificate SHA-256 digest:/ {print $NF; exit}' |
               tr -d ':' | tr '[:lower:]' '[:upper:]')"
-
             if [ "$actual" != "$expected" ]; then
-              echo "::error::Invalid APK signature."
+              echo "::error::Invalid APK signature: $apk"
               exit 1
             fi
-
             count=$((count + 1))
           done
-
-          test "$count" -gt 0
-          echo "All APK files passed verification."
+          test "$count" -eq 5
+          echo "All five APK files passed signature verification."
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ON-Tunnel-ARM
-          path: app/build/outputs/apk/debug/*.apk
+          name: ON-Tunnel-All-ABIs
+          path: staged-apks/*.apk
           if-no-files-found: error
 
       - name: Prepare GitHub Release
@@ -475,15 +180,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release
-
-          cp app/build/outputs/apk/debug/app-universal-debug.apk \
-             release/ON-Tunnel-Universal.apk
-
-          cp app/build/outputs/apk/debug/app-arm64-v8a-debug.apk \
-             release/ON-Tunnel-arm64-v8a.apk
-
-          cp app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk \
-             release/ON-Tunnel-armeabi-v7a.apk
+          cp staged-apks/*.apk release/
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
