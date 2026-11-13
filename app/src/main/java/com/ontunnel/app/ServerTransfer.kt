@@ -116,7 +116,14 @@ object ServerTransfer {
             return import(JSONObject().put("format", FORMAT).put("version", VERSION)
                 .put("servers", JSONArray().put(JSONObject(decoded))).toString())
         }
-        if (raw.startsWith("{")) return import(raw)
+        if (raw.startsWith("{")) {
+            val json = JSONObject(raw)
+            if (json.has("outbounds")) {
+                val parsed = V2RayConfigParser.parse(raw)
+                return listOf(ServerEntry(name = parsed.name, config = parsed.config, uri = parsed.uri))
+            }
+            return import(raw)
+        }
         val entries = mutableListOf<ServerEntry>()
         raw.lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }.forEach { line ->
             val parsed = V2RayConfigParser.parse(line)
