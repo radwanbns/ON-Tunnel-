@@ -219,7 +219,7 @@ class ONTunnelVpnService : VpnService() {
         const val EXTRA_ERROR = "error"
         const val NOTIFICATION_ID = 7001
         private const val SERVER_TEST_URL = "https://www.google.com/generate_204"
-        private const val SERVER_TEST_TIMEOUT_MS = 20_000L
+        private const val SERVER_TEST_TIMEOUT_MS = 60_000L
 
         @Volatile
         var running: Boolean = false
