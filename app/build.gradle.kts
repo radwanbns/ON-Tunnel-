@@ -25,10 +25,14 @@ android {
             }
         }
 
-        // Only ship ARM native libs (exclude x86/x86_64 from AARs like libv2ray)
+        // ABI set is selected by the build workflow:
+        // ARM build creates the ARM-only Universal APK; x86 build creates x86 split APKs.
+        val selectedAbis = (project.findProperty("ABI_FILTERS") as? String)
+            ?.split(";")?.filter { it.isNotBlank() }
+            ?: listOf("arm64-v8a", "armeabi-v7a")
         ndk {
             abiFilters.clear()
-            abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a"))
+            abiFilters.addAll(selectedAbis)
         }
     }
 
@@ -45,10 +49,11 @@ android {
             reset()
             include(
                 *((project.findProperty("ABI_FILTERS") as? String)
-                    ?.split(";")?.toTypedArray()
+                    ?.split(";")?.filter { it.isNotBlank() }?.toTypedArray()
                     ?: arrayOf("arm64-v8a", "armeabi-v7a"))
             )
-            isUniversalApk = true
+            isUniversalApk = (project.findProperty("UNIVERSAL_APK") as? String)
+                ?.toBoolean() ?: true
         }
     }
 
@@ -85,16 +90,8 @@ android {
         aidl = true
     }
 
-    packaging {
-        jniLibs {
-            excludes += setOf(
-                "**/lib/x86/**",
-                "**/lib/x86_64/**",
-                "**/x86/**",
-                "**/x86_64/**"
-            )
-        }
-    }
+    // Do not globally exclude x86: the dedicated x86 build needs these libraries.
+    // The ARM Universal APK is kept ARM-only by its ABI_FILTERS build property.
 
 
     compileOptions {
