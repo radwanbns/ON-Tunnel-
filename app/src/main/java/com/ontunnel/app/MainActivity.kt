@@ -90,14 +90,44 @@ class MainActivity : ComponentActivity() {
             if (id < 0L) return
             val manager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
             manager.query(DownloadManager.Query().setFilterById(id)).use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val downloaded = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
-                    val total = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
-                    if (total > 0L) updateProgress = ((downloaded * 100L) / total).toInt().coerceIn(0, 99)
-                    val state = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-                    if (state == DownloadManager.STATUS_RUNNING || state == DownloadManager.STATUS_PENDING || state == DownloadManager.STATUS_PAUSED) {
+                if (!cursor.moveToFirst()) {
+                    mainHandler.postDelayed(this, 1000L)
+                    return
+                }
+
+                val state = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                when (state) {
+                    DownloadManager.STATUS_SUCCESSFUL -> {
+                        // DownloadManager can finish without the completion broadcast being
+                        // delivered to this activity. Finalize here as a reliable fallback.
+                        updateProgress = 100
+                        updateDownloading = false
+                        updateDownloadId = -1L
+                        mainHandler.removeCallbacks(this)
+                        getSharedPreferences("app_update", MODE_PRIVATE).edit()
+                            .remove("download_id")
+                            .putBoolean("pending_install", true)
+                            .apply()
+                        installDownloadedUpdate()
+                    }
+                    DownloadManager.STATUS_FAILED -> {
+                        updateDownloading = false
+                        updateDownloadId = -1L
+                        mainHandler.removeCallbacks(this)
+                        getSharedPreferences("app_update", MODE_PRIVATE).edit()
+                            .remove("download_id")
+                            .apply()
+                        Toast.makeText(this@MainActivity, "Update download failed", Toast.LENGTH_LONG).show()
+                    }
+                    DownloadManager.STATUS_RUNNING,
+                    DownloadManager.STATUS_PENDING,
+                    DownloadManager.STATUS_PAUSED -> {
+                        val downloaded = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+                        val total = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+                        if (total > 0L) updateProgress = ((downloaded * 100L) / total).toInt().coerceIn(0, 99)
                         mainHandler.postDelayed(this, 400L)
                     }
+                    else -> mainHandler.postDelayed(this, 1000L)
                 }
             }
         }
