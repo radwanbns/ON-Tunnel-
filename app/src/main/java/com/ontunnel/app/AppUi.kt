@@ -1928,36 +1928,32 @@ private fun HomeConfigLogsBottomBar(
     onLogs: () -> Unit,
     onMore: () -> Unit = {}
 ) {
-    var showAd by remember { mutableStateOf(false) }
     Box {
         NavigationBar(containerColor = SurfaceC) {
             NavigationBarItem(
                 selected = selectedTab == "HOME",
-                onClick = { showAd = true; onHome() },
+                onClick = onHome,
             icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
             label = { Text("HOME") }
         )
         NavigationBarItem(
             selected = selectedTab == "CONFIG",
-            onClick = { showAd = true; onConfig() },
+            onClick = onConfig,
             icon = { Icon(Icons.Default.Dns, contentDescription = "Configurations") },
             label = { Text("SERVERS") }
         )
         NavigationBarItem(
             selected = selectedTab == "LOGS",
-            onClick = { showAd = true; onLogs() },
+            onClick = onLogs,
             icon = { Icon(Icons.Default.ReceiptLong, contentDescription = "Logs") },
             label = { Text("LOGS") }
         )
         NavigationBarItem(
             selected = selectedTab == "MORE",
-            onClick = { showAd = true; onMore() },
+            onClick = onMore,
             icon = { Icon(Icons.Default.MoreHoriz, contentDescription = "More") },
             label = { Text("MORE") }
         )
-        }
-        if (showAd) {
-            AdsterraWebViewDialog(onDismiss = { showAd = false })
         }
     }
 }
