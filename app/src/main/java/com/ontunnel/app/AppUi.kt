@@ -260,6 +260,90 @@ private fun AdsterraRewardDialog(onDismiss: () -> Unit, onReward: () -> Unit) {
     }
 }
 
+
+@Composable
+private fun ServerPickerDialog(
+    servers: List<ServerEntry>,
+    selectedId: String,
+    onSelect: (ServerEntry) -> Unit,
+    onDismiss: () -> Unit
+) {
+    BackHandler { onDismiss() }
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize().padding(10.dp),
+            shape = RoundedCornerShape(18.dp),
+            color = SurfaceC
+        ) {
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Select Server", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                    Text("${servers.size}", color = Accent, fontWeight = FontWeight.Bold)
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close server list")
+                    }
+                }
+                if (servers.isEmpty()) {
+                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Text("No servers available", color = TextMuted)
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        items(servers, key = { it.id }) { entry ->
+                            Card(
+                                onClick = { onSelect(entry) },
+                                shape = RoundedCornerShape(18.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (entry.id == selectedId) SurfaceHigh else SurfaceC
+                                ),
+                                border = if (entry.id == selectedId) BorderStroke(1.5.dp, Accent)
+                                    else BorderStroke(0.dp, Color.Transparent),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        if (entry.id == selectedId) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
+                                        contentDescription = null,
+                                        tint = if (entry.id == selectedId) Accent else TextMuted
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            entry.name,
+                                            color = TextMain,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(badgeFor(entry), color = TextMuted, fontSize = 11.sp)
+                                    }
+                                    if (entry.locked) {
+                                        Icon(Icons.Default.Lock, contentDescription = "Locked", tint = TextMuted, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 private class EditorTarget(val entry: ServerEntry?, val profile: ServerProfile)
 private class OvpnEditorTarget(val entry: ServerEntry?, val profile: OvpnProfile)
 private class SshEditorTarget(val entry: ServerEntry?, val profile: SshProfile)
@@ -303,6 +387,7 @@ internal fun ONTunnelApp(
     var currentTab by rememberSaveable { mutableStateOf("HOME") }
     var showAddSheet by remember { mutableStateOf(false) }
     var showRewardAd by remember { mutableStateOf(false) }
+    var showServerPicker by remember { mutableStateOf(false) }
     var showServerUpdateDialog by remember { mutableStateOf(false) }
     var pendingServerList by remember { mutableStateOf<List<ServerEntry>?>(null) }
     // Shown on EVERY app launch (rememberSaveable only survives rotation, not a new launch)
@@ -876,6 +961,17 @@ internal fun ONTunnelApp(
                                         onClick = ::toggleConnect
                                     )
                                 }
+                                item(key = "select_server") {
+                                    Button(
+                                        onClick = { showServerPicker = true },
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                        shape = RoundedCornerShape(14.dp)
+                                    ) {
+                                        Icon(Icons.Default.Dns, contentDescription = null)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("SELECT SERVER")
+                                    }
+                                }
                                 item(key = "time_credit") {
                                     Row(
                                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
@@ -1156,6 +1252,24 @@ internal fun ONTunnelApp(
             }
 
             // ── Dialogs ────────────────────────────────────────────────
+            if (showServerPicker) {
+                ServerPickerDialog(
+                    servers = servers,
+                    selectedId = selectedId,
+                    onDismiss = { showServerPicker = false },
+                    onSelect = { entry ->
+                        if (entry.id != selectedId &&
+                            (status == VpnStatus.Connected || status == VpnStatus.Connecting)
+                        ) {
+                            onDisconnect()
+                        }
+                        select(entry.id)
+                        showServerPicker = false
+                        message("Selected: ${entry.name}")
+                    }
+                )
+            }
+
             if (showRewardAd) {
                 AdsterraRewardDialog(
                     onDismiss = { showRewardAd = false },
