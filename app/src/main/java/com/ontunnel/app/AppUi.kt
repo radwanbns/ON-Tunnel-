@@ -85,6 +85,84 @@ private fun openTelegram(context: Context) {
 
 private const val ADSTERRA_SMARTLINK = "https://asiafilm.org/4/7b0958aa0beec71b026e4ee5b017f0c5"
 
+/**
+ * Ad pages often use market:// or intent:// links for Google Play.
+ * A plain WebViewClient does not launch these intents automatically.
+ */
+private fun openAdStoreLink(context: Context, rawUrl: String): Boolean {
+    val uri = runCatching { Uri.parse(rawUrl) }.getOrNull() ?: return false
+    val scheme = uri.scheme?.lowercase().orEmpty()
+    val isPlayWebUrl = (uri.host?.lowercase() == "play.google.com" ||
+        uri.host?.lowercase() == "www.play.google.com") &&
+        uri.path?.startsWith("/store/apps") == true
+
+    if (scheme == "intent") {
+        val intent = runCatching {
+            Intent.parseUri(rawUrl, Intent.URI_INTENT_SCHEME).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }.getOrNull() ?: return true
+        try {
+            context.startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            val fallback = intent.getStringExtra("browser_fallback_url")
+            val packageId = intent.getPackage()
+            val playUrl = when {
+                !fallback.isNullOrBlank() -> fallback
+                !packageId.isNullOrBlank() -> "https://play.google.com/store/apps/details?id=$packageId"
+                else -> null
+            }
+            if (playUrl != null) {
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(playUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            }
+        } catch (_: Exception) {
+            // Do not let a malformed ad intent crash the WebView.
+        }
+        return true
+    }
+
+    if (scheme == "market" || isPlayWebUrl) {
+        val marketUri = if (scheme == "market") uri else {
+            val appId = uri.getQueryParameter("id")
+            if (appId.isNullOrBlank()) null else Uri.parse("market://details?id=$appId")
+        }
+        if (marketUri != null) {
+            try {
+                context.startActivity(Intent(Intent.ACTION_VIEW, marketUri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return true
+            } catch (_: ActivityNotFoundException) {
+                val fallback = if (isPlayWebUrl) rawUrl else {
+                    val appId = uri.getQueryParameter("id")
+                    if (appId.isNullOrBlank()) null else "https://play.google.com/store/apps/details?id=$appId"
+                }
+                if (fallback != null) {
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fallback)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
+                }
+                return true
+            } catch (_: Exception) {
+                return true
+            }
+        }
+        return true
+    }
+    return false
+}
+
+private fun createAdWebViewClient(context: Context) = object : android.webkit.WebViewClient() {
+    override fun shouldOverrideUrlLoading(
+        view: android.webkit.WebView?,
+        request: android.webkit.WebResourceRequest
+    ): Boolean = openAdStoreLink(context, request.url.toString())
+
+    @Suppress("DEPRECATION")
+    override fun shouldOverrideUrlLoading(view: android.webkit.WebView?, url: String?): Boolean =
+        url?.let { openAdStoreLink(context, it) } ?: false
+}
+
 @Composable
 private fun AdsterraWebViewDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
@@ -95,7 +173,7 @@ private fun AdsterraWebViewDialog(onDismiss: () -> Unit) {
             settings.loadsImagesAutomatically = true
             settings.javaScriptCanOpenWindowsAutomatically = false
             settings.setSupportMultipleWindows(false)
-            webViewClient = android.webkit.WebViewClient()
+            webViewClient = createAdWebViewClient(context)
             webChromeClient = android.webkit.WebChromeClient()
             loadUrl(ADSTERRA_SMARTLINK)
         }
@@ -145,7 +223,7 @@ private fun AdsterraRewardDialog(onDismiss: () -> Unit, onReward: () -> Unit) {
             settings.loadsImagesAutomatically = true
             settings.javaScriptCanOpenWindowsAutomatically = false
             settings.setSupportMultipleWindows(false)
-            webViewClient = android.webkit.WebViewClient()
+            webViewClient = createAdWebViewClient(context)
             webChromeClient = android.webkit.WebChromeClient()
             loadUrl(ADSTERRA_SMARTLINK)
         }
