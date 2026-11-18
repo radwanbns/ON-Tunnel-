@@ -1,6 +1,6 @@
 vless://3a6efa1a-e39d-11f1-8271-ab9d1045deea@104.18.37.127:443?encryption=none&security=tls&sni=ca2.ratech.qzz.io&type=ws&host=ca2.ratech.qzz.io&path=%2Fvpnjantit#🇨🇦 𝙸𝙰𝙼 ☆𝟼
 vless://9cef39fc-df6f-11f1-9ca1-525401f4a8d2@104.18.37.127:443?encryption=none&security=tls&sni=bd2.ratech.qzz.io&fp=random&type=ws&host=bd2.ratech.qzz.io&path=%2Fvpnjantit#🇧🇩 𝙸𝙰𝙼 ☆𝟼
-vless://69581dbe-dae4-11f1-b72a-abac734acded@104.18.37.127:443?encryption=none&security=tls&sni=cl1.ratech.qzz.io&type=ws&host=cl1.ratech.qzz.io&path=%2Fvpnjantit#🇨🇱 𝙸𝙰𝙼 ☆𝟼
+vless://fba3d044-e3a1-11f1-8564-5b83f8680fb3@104.18.37.127:443?encryption=none&security=tls&sni=cl1.ratech.qzz.io&type=ws&host=cl1.ratech.qzz.io&path=%2Fvpnjantit#🇨🇱 𝙸𝙰𝙼 ☆𝟼
 vless://bb7ca8e0-e209-11f1-a614-5f78500cf23c@104.18.37.127:443?encryption=none&security=tls&sni=sa3.ratech.qzz.io&type=ws&host=sa3.ratech.qzz.io&path=%2Fvpnjantit#🇿🇦 𝙸𝙰𝙼 ☆𝟼
 vless://223171de-dbd3-11f1-90dd-1ff12eefe6a9@104.18.41.245:443?encryption=none&security=tls&sni=sg8.ratech.qzz.io&type=ws&host=sg8.ratech.qzz.io&path=%2Fvpnjantit#🇸🇬 𝙸𝙰𝙼 ☆𝟼 𝙸𝙿 𝟷𝟶𝟶
 vless://6b8c1a2c-dd69-11f1-ab10-3b7ca9c6e998@104.18.41.245:443?encryption=none&security=tls&sni=se2.ratech.qzz.io&type=ws&host=se2.ratech.qzz.io&path=%2Fvpnjantit#🇸🇪 𝙸𝙰𝙼 ☆𝟼 𝙸𝙿 𝟷𝟶𝟶
