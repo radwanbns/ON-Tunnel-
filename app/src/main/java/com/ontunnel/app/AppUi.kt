@@ -83,6 +83,19 @@ private fun openTelegram(context: Context) {
     }
 }
 
+private const val ADSTERRA_SMARTLINK = "https://asiafilm.org/4/7b0958aa0beec71b026e4ee5b017f0c5"
+
+private fun openAdsterraSmartlink(context: Context) {
+    try {
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse(ADSTERRA_SMARTLINK))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, "No browser available to open the advertisement", Toast.LENGTH_SHORT).show()
+    }
+}
+
 private class EditorTarget(val entry: ServerEntry?, val profile: ServerProfile)
 private class OvpnEditorTarget(val entry: ServerEntry?, val profile: OvpnProfile)
 private class SshEditorTarget(val entry: ServerEntry?, val profile: SshProfile)
@@ -1792,28 +1805,29 @@ private fun HomeConfigLogsBottomBar(
     onLogs: () -> Unit,
     onMore: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     NavigationBar(containerColor = SurfaceC) {
         NavigationBarItem(
             selected = selectedTab == "HOME",
-            onClick = onHome,
+            onClick = { openAdsterraSmartlink(context); onHome() },
             icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
             label = { Text("HOME") }
         )
         NavigationBarItem(
             selected = selectedTab == "CONFIG",
-            onClick = onConfig,
+            onClick = { openAdsterraSmartlink(context); onConfig() },
             icon = { Icon(Icons.Default.Dns, contentDescription = "Configurations") },
             label = { Text("SERVERS") }
         )
         NavigationBarItem(
             selected = selectedTab == "LOGS",
-            onClick = onLogs,
+            onClick = { openAdsterraSmartlink(context); onLogs() },
             icon = { Icon(Icons.Default.ReceiptLong, contentDescription = "Logs") },
             label = { Text("LOGS") }
         )
         NavigationBarItem(
             selected = selectedTab == "MORE",
-            onClick = onMore,
+            onClick = { openAdsterraSmartlink(context); onMore() },
             icon = { Icon(Icons.Default.MoreHoriz, contentDescription = "More") },
             label = { Text("MORE") }
         )
