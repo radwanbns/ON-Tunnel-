@@ -225,7 +225,7 @@ internal fun ONTunnelApp(
     var currentTab by rememberSaveable { mutableStateOf("HOME") }
     var showAddSheet by remember { mutableStateOf(false) }
     var showRewardAd by remember { mutableStateOf(false) }
-    var serverUpdateNotice by remember { mutableStateOf<String?>(null) }
+    var showServerUpdateDialog by remember { mutableStateOf(false) }
     // Shown on EVERY app launch (rememberSaveable only survives rotation, not a new launch)
     var showTelegram by rememberSaveable { mutableStateOf(true) }
     var showPaste by remember { mutableStateOf(false) }
@@ -342,15 +342,7 @@ internal fun ONTunnelApp(
                 saveServers(merged)
                 if (merged.none { it.id == selectedId }) select(merged.firstOrNull()?.id.orEmpty())
                 if (added > 0 || updated > 0 || removed > 0) {
-                    serverUpdateNotice = buildString {
-                        append("Server list has been updated.\n\n")
-                        append("New servers: $added\n")
-                        append("Modified servers: $updated\n")
-                        append("Removed servers: $removed\n\n")
-                        append("Total available servers: ${newLocked.size}")
-                    }
-                } else if (!auto) {
-                    serverUpdateNotice = "Your server list is already up to date.\n\nTotal available servers: ${newLocked.size}"
+                    showServerUpdateDialog = true
                 }
             }.onFailure { e ->
                 if (!auto) message("Update failed: ${e.message}")
@@ -998,15 +990,29 @@ internal fun ONTunnelApp(
                 }
             }
 
-            serverUpdateNotice?.let { notice ->
+            if (showServerUpdateDialog && !showTelegram) {
                 AlertDialog(
-                    onDismissRequest = { serverUpdateNotice = null },
+                    onDismissRequest = { showServerUpdateDialog = false },
                     containerColor = SurfaceC,
-                    icon = { Icon(Icons.Default.Sync, null, tint = Accent, modifier = Modifier.size(30.dp)) },
-                    title = { Text("Server update", fontWeight = FontWeight.Bold) },
-                    text = { Text(notice, color = TextMuted) },
+                    icon = {
+                        Box(
+                            Modifier.size(56.dp).clip(CircleShape).background(Accent.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Sync, null, tint = Accent, modifier = Modifier.size(28.dp))
+                        }
+                    },
+                    title = {
+                        Text("Servers updated", textAlign = TextAlign.Center, fontWeight = FontWeight.Bold)
+                    },
+                    text = {
+                        Text(
+                            "The server list has been updated. New or changed servers are ready to use.",
+                            color = TextMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+                        )
+                    },
                     confirmButton = {
-                        Button(onClick = { serverUpdateNotice = null }) { Text("OK") }
+                        Button(onClick = { showServerUpdateDialog = false }) { Text("OK") }
                     }
                 )
             }
