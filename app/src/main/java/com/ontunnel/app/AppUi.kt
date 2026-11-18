@@ -127,7 +127,7 @@ private fun AdsterraWebViewDialog(onDismiss: () -> Unit) {
                 }
                 AndroidView(
                     factory = { adWebView },
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxWidth().weight(1f)
                 )
             }
         }
