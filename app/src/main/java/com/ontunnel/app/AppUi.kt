@@ -214,7 +214,7 @@ private fun AdsterraWebViewDialog(onDismiss: () -> Unit) {
 
 @Composable
 private fun AdsterraRewardDialog(onDismiss: () -> Unit, onReward: () -> Unit) {
-    var secondsLeft by remember { mutableStateOf(15) }
+    var secondsLeft by remember { mutableStateOf(30) }
     val context = LocalContext.current
     val adWebView = remember(context) {
         android.webkit.WebView(context).apply {
