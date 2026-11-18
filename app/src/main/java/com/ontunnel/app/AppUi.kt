@@ -225,6 +225,7 @@ internal fun ONTunnelApp(
     var currentTab by rememberSaveable { mutableStateOf("HOME") }
     var showAddSheet by remember { mutableStateOf(false) }
     var showRewardAd by remember { mutableStateOf(false) }
+    var serverUpdateNotice by remember { mutableStateOf<String?>(null) }
     // Shown on EVERY app launch (rememberSaveable only survives rotation, not a new launch)
     var showTelegram by rememberSaveable { mutableStateOf(true) }
     var showPaste by remember { mutableStateOf(false) }
@@ -323,15 +324,34 @@ internal fun ONTunnelApp(
                     (oldByProfile[profileKey(e)]?.let { e.copy(id = it.id) } ?: e)
                         .copy(locked = true, subscription = true)
                 }
-                val previousKeys = (previousSubscription + legacySubscription)
-                    .map { profileKey(it) }.toSet()
-                val added = newLocked.count { profileKey(it) !in previousKeys }
+                val oldSubscription = previousSubscription + legacySubscription
+                val previousKeys = oldSubscription.map { profileKey(it) }.toSet()
+                val oldByName = oldSubscription.groupBy { it.name.trim().lowercase() }
+                val added = newLocked.count { freshEntry ->
+                    profileKey(freshEntry) !in previousKeys &&
+                        oldByName[freshEntry.name.trim().lowercase()].isNullOrEmpty()
+                }
+                val updated = newLocked.count { freshEntry ->
+                    profileKey(freshEntry) !in previousKeys &&
+                        !oldByName[freshEntry.name.trim().lowercase()].isNullOrEmpty()
+                }
+                val newKeys = newLocked.map { profileKey(it) }.toSet()
+                val removed = oldSubscription.count { profileKey(it) !in newKeys }
                 val manual = servers.filter { !it.subscription && it !in legacySubscription }
                 val merged = newLocked + manual
                 saveServers(merged)
                 if (merged.none { it.id == selectedId }) select(merged.firstOrNull()?.id.orEmpty())
-                if (added > 0) message("Updated successfully – $added new server(s) added")
-                else if (!auto) message("Already up to date (${newLocked.size} servers)")
+                if (added > 0 || updated > 0 || removed > 0) {
+                    serverUpdateNotice = buildString {
+                        append("Server list has been updated.\n\n")
+                        append("New servers: $added\n")
+                        append("Modified servers: $updated\n")
+                        append("Removed servers: $removed\n\n")
+                        append("Total available servers: ${newLocked.size}")
+                    }
+                } else if (!auto) {
+                    serverUpdateNotice = "Your server list is already up to date.\n\nTotal available servers: ${newLocked.size}"
+                }
             }.onFailure { e ->
                 if (!auto) message("Update failed: ${e.message}")
             }
@@ -976,6 +996,19 @@ internal fun ONTunnelApp(
                         }
                     }
                 }
+            }
+
+            serverUpdateNotice?.let { notice ->
+                AlertDialog(
+                    onDismissRequest = { serverUpdateNotice = null },
+                    containerColor = SurfaceC,
+                    icon = { Icon(Icons.Default.Sync, null, tint = Accent, modifier = Modifier.size(30.dp)) },
+                    title = { Text("Server update", fontWeight = FontWeight.Bold) },
+                    text = { Text(notice, color = TextMuted) },
+                    confirmButton = {
+                        Button(onClick = { serverUpdateNotice = null }) { Text("OK") }
+                    }
+                )
             }
 
             if (updateDownloading) {
