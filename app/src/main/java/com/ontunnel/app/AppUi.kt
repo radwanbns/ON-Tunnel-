@@ -134,6 +134,54 @@ private fun AdsterraWebViewDialog(onDismiss: () -> Unit) {
     }
 }
 
+@Composable
+private fun AdsterraRewardDialog(onDismiss: () -> Unit, onReward: () -> Unit) {
+    var secondsLeft by remember { mutableStateOf(15) }
+    val context = LocalContext.current
+    val adWebView = remember(context) {
+        android.webkit.WebView(context).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.loadsImagesAutomatically = true
+            settings.javaScriptCanOpenWindowsAutomatically = false
+            settings.setSupportMultipleWindows(false)
+            webViewClient = android.webkit.WebViewClient()
+            webChromeClient = android.webkit.WebChromeClient()
+            loadUrl(ADSTERRA_SMARTLINK)
+        }
+    }
+    DisposableEffect(adWebView) { onDispose { adWebView.destroy() } }
+    LaunchedEffect(Unit) {
+        while (secondsLeft > 0) {
+            delay(1000)
+            secondsLeft--
+        }
+    }
+    BackHandler { onDismiss() }
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(Modifier.fillMaxSize().padding(10.dp), shape = RoundedCornerShape(18.dp), color = SurfaceC) {
+            Column {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Advertisement", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                    Text(if (secondsLeft > 0) "Wait ${secondsLeft}s" else "Ready", color = Accent)
+                }
+                AndroidView(factory = { adWebView }, modifier = Modifier.fillMaxWidth().weight(1f))
+                Button(
+                    onClick = onReward,
+                    enabled = secondsLeft == 0,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                ) { Text(if (secondsLeft > 0) "Please wait ${secondsLeft}s" else "CANCEL AND CLAIM 1 HOUR") }
+                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                    Text("Close without reward")
+                }
+            }
+        }
+    }
+}
+
 private class EditorTarget(val entry: ServerEntry?, val profile: ServerProfile)
 private class OvpnEditorTarget(val entry: ServerEntry?, val profile: OvpnProfile)
 private class SshEditorTarget(val entry: ServerEntry?, val profile: SshProfile)
@@ -147,6 +195,8 @@ private class SshEditorTarget(val entry: ServerEntry?, val profile: SshProfile)
 internal fun ONTunnelApp(
     status: VpnStatus,
     statusDetail: String?,
+    remainingMillis: Long,
+    onClaimReward: () -> Unit,
     error: String?,
     tampered: Boolean,
     onDismissError: () -> Unit,
@@ -174,6 +224,7 @@ internal fun ONTunnelApp(
     var menuOpen by remember { mutableStateOf(false) }
     var currentTab by rememberSaveable { mutableStateOf("HOME") }
     var showAddSheet by remember { mutableStateOf(false) }
+    var showRewardAd by remember { mutableStateOf(false) }
     // Shown on EVERY app launch (rememberSaveable only survives rotation, not a new launch)
     var showTelegram by rememberSaveable { mutableStateOf(true) }
     var showPaste by remember { mutableStateOf(false) }
@@ -471,6 +522,10 @@ internal fun ONTunnelApp(
 
     fun toggleConnect() {
         if (tampered) { message("App integrity check failed – connection disabled"); return }
+        if (remainingMillis <= 0L && status != VpnStatus.Connected) {
+            message("Time is over. Watch the advertisement to add 1 hour.")
+            return
+        }
         if (status == VpnStatus.Connected || (status == VpnStatus.Connecting && statusDetail != null)) { onDisconnect(); return }
         val sel = servers.firstOrNull { it.id == selectedId }
         if (sel == null) message("Please select a server first") else onConnect(sel)
@@ -729,6 +784,18 @@ internal fun ONTunnelApp(
                                         onClick = ::toggleConnect
                                     )
                                 }
+                                item(key = "time_credit") {
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text("Remaining time", color = TextMuted, fontSize = 12.sp)
+                                            Text(formatCreditTime(remainingMillis), color = TextMain, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        Button(onClick = { showRewardAd = true }) { Text("ADD + 1 HOUR") }
+                                    }
+                                }
                                 // The imported .cot HTML note belongs in HOME's free content area,
                                 // not inside the server row in CONFIG.
                                 if (!selected?.noteHtml.isNullOrBlank()) {
@@ -961,6 +1028,16 @@ internal fun ONTunnelApp(
             }
 
             // ── Dialogs ────────────────────────────────────────────────
+            if (showRewardAd) {
+                AdsterraRewardDialog(
+                    onDismiss = { showRewardAd = false },
+                    onReward = {
+                        onClaimReward()
+                        showRewardAd = false
+                    }
+                )
+            }
+
             if (showTelegram) {
                 AlertDialog(
                     onDismissRequest = { showTelegram = false },
@@ -1449,6 +1526,14 @@ private fun SettingsCard(title: String, content: @Composable ColumnScope.() -> U
     }
 }
 
+
+private fun formatCreditTime(millis: Long): String {
+    val totalSeconds = (millis.coerceAtLeast(0L) + 999L) / 1000L
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return "%02d:%02d:%02d".format(hours, minutes, seconds)
+}
 
 private fun formatElapsed(totalSeconds: Long): String {
     val h = totalSeconds / 3600
