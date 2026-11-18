@@ -226,6 +226,7 @@ internal fun ONTunnelApp(
     var showAddSheet by remember { mutableStateOf(false) }
     var showRewardAd by remember { mutableStateOf(false) }
     var showServerUpdateDialog by remember { mutableStateOf(false) }
+    var pendingServerList by remember { mutableStateOf<List<ServerEntry>?>(null) }
     // Shown on EVERY app launch (rememberSaveable only survives rotation, not a new launch)
     var showTelegram by rememberSaveable { mutableStateOf(true) }
     var showPaste by remember { mutableStateOf(false) }
@@ -341,9 +342,8 @@ internal fun ONTunnelApp(
                 val removed = oldSubscription.count { profileKey(it) !in newKeys }
                 val manual = servers.filter { !it.subscription && it !in legacySubscription }
                 val merged = newLocked + manual
-                saveServers(merged)
-                if (merged.none { it.id == selectedId }) select(merged.firstOrNull()?.id.orEmpty())
                 if (added > 0 || updated > 0 || removed > 0) {
+                    pendingServerList = merged
                     showServerUpdateDialog = true
                 }
             }.onFailure { e ->
@@ -994,7 +994,7 @@ internal fun ONTunnelApp(
 
             if (showServerUpdateDialog && !showTelegram) {
                 AlertDialog(
-                    onDismissRequest = { showServerUpdateDialog = false },
+                    onDismissRequest = { showServerUpdateDialog = false; pendingServerList = null },
                     containerColor = SurfaceC,
                     icon = {
                         Box(
@@ -1005,16 +1005,25 @@ internal fun ONTunnelApp(
                         }
                     },
                     title = {
-                        Text("Servers updated", textAlign = TextAlign.Center, fontWeight = FontWeight.Bold)
+                        Text("New Server Update", textAlign = TextAlign.Center, fontWeight = FontWeight.Bold)
                     },
                     text = {
                         Text(
-                            "The server list has been updated. New or changed servers are ready to use.",
+                            "A new server update is available. Please click the button below to update your servers.",
                             color = TextMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
                         )
                     },
                     confirmButton = {
-                        Button(onClick = { showServerUpdateDialog = false }) { Text("OK") }
+                        Button(onClick = {
+                            pendingServerList?.let { updatedServers ->
+                                saveServers(updatedServers)
+                                if (updatedServers.none { it.id == selectedId }) {
+                                    select(updatedServers.firstOrNull()?.id.orEmpty())
+                                }
+                            }
+                            pendingServerList = null
+                            showServerUpdateDialog = false
+                        }) { Text("UPDATE SERVERS") }
                     }
                 )
             }
