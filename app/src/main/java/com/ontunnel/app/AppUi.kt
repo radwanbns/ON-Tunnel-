@@ -85,14 +85,52 @@ private fun openTelegram(context: Context) {
 
 private const val ADSTERRA_SMARTLINK = "https://asiafilm.org/4/7b0958aa0beec71b026e4ee5b017f0c5"
 
-private fun openAdsterraSmartlink(context: Context) {
-    try {
-        context.startActivity(
-            Intent(Intent.ACTION_VIEW, Uri.parse(ADSTERRA_SMARTLINK))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+@Composable
+private fun AdsterraWebViewDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val adWebView = remember(context) {
+        android.webkit.WebView(context).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.loadsImagesAutomatically = true
+            settings.javaScriptCanOpenWindowsAutomatically = false
+            settings.setSupportMultipleWindows(false)
+            webViewClient = android.webkit.WebViewClient()
+            webChromeClient = android.webkit.WebChromeClient()
+            loadUrl(ADSTERRA_SMARTLINK)
+        }
+    }
+    DisposableEffect(adWebView) {
+        onDispose { adWebView.destroy() }
+    }
+    androidx.activity.compose.BackHandler { onDismiss() }
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = false
         )
-    } catch (_: ActivityNotFoundException) {
-        Toast.makeText(context, "No browser available to open the advertisement", Toast.LENGTH_SHORT).show()
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize().padding(10.dp),
+            shape = RoundedCornerShape(18.dp),
+            color = SurfaceC
+        ) {
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Advertisement", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close advertisement")
+                    }
+                }
+                AndroidView(
+                    factory = { adWebView },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
     }
 }
 
@@ -1805,32 +1843,37 @@ private fun HomeConfigLogsBottomBar(
     onLogs: () -> Unit,
     onMore: () -> Unit = {}
 ) {
-    val context = LocalContext.current
-    NavigationBar(containerColor = SurfaceC) {
-        NavigationBarItem(
-            selected = selectedTab == "HOME",
-            onClick = { openAdsterraSmartlink(context); onHome() },
+    var showAd by remember { mutableStateOf(false) }
+    Box {
+        NavigationBar(containerColor = SurfaceC) {
+            NavigationBarItem(
+                selected = selectedTab == "HOME",
+                onClick = { showAd = true; onHome() },
             icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
             label = { Text("HOME") }
         )
         NavigationBarItem(
             selected = selectedTab == "CONFIG",
-            onClick = { openAdsterraSmartlink(context); onConfig() },
+            onClick = { showAd = true; onConfig() },
             icon = { Icon(Icons.Default.Dns, contentDescription = "Configurations") },
             label = { Text("SERVERS") }
         )
         NavigationBarItem(
             selected = selectedTab == "LOGS",
-            onClick = { openAdsterraSmartlink(context); onLogs() },
+            onClick = { showAd = true; onLogs() },
             icon = { Icon(Icons.Default.ReceiptLong, contentDescription = "Logs") },
             label = { Text("LOGS") }
         )
         NavigationBarItem(
             selected = selectedTab == "MORE",
-            onClick = { openAdsterraSmartlink(context); onMore() },
+            onClick = { showAd = true; onMore() },
             icon = { Icon(Icons.Default.MoreHoriz, contentDescription = "More") },
             label = { Text("MORE") }
         )
+        }
+        if (showAd) {
+            AdsterraWebViewDialog(onDismiss = { showAd = false })
+        }
     }
 }
 
