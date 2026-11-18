@@ -332,8 +332,10 @@ internal fun ONTunnelApp(
                         oldByName[freshEntry.name.trim().lowercase()].isNullOrEmpty()
                 }
                 val updated = newLocked.count { freshEntry ->
-                    profileKey(freshEntry) !in previousKeys &&
-                        !oldByName[freshEntry.name.trim().lowercase()].isNullOrEmpty()
+                    val sameProfile = oldByProfile[profileKey(freshEntry)]
+                    val sameName = !oldByName[freshEntry.name.trim().lowercase()].isNullOrEmpty()
+                    (sameProfile != null && sameProfile.name != freshEntry.name) ||
+                        (profileKey(freshEntry) !in previousKeys && sameName)
                 }
                 val newKeys = newLocked.map { profileKey(it) }.toSet()
                 val removed = oldSubscription.count { profileKey(it) !in newKeys }
