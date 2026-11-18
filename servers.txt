@@ -1,4 +1,4 @@
-vless://2890db28-e1fa-11f1-b656-37970f4542ba@104.18.37.127:443?encryption=none&security=tls&sni=ca2.ratech.qzz.io&type=ws&host=ca2.ratech.qzz.io&path=%2Fvpnjantit#🇨🇦 𝙸𝙰𝙼 ☆𝟼
+vless://3a6efa1a-e39d-11f1-8271-ab9d1045deea@104.18.37.127:443?encryption=none&security=tls&sni=ca2.ratech.qzz.io&type=ws&host=ca2.ratech.qzz.io&path=%2Fvpnjantit#🇨🇦 𝙸𝙰𝙼 ☆𝟼
 vless://9cef39fc-df6f-11f1-9ca1-525401f4a8d2@104.18.37.127:443?encryption=none&security=tls&sni=bd2.ratech.qzz.io&fp=random&type=ws&host=bd2.ratech.qzz.io&path=%2Fvpnjantit#🇧🇩 𝙸𝙰𝙼 ☆𝟼
 vless://69581dbe-dae4-11f1-b72a-abac734acded@104.18.37.127:443?encryption=none&security=tls&sni=cl1.ratech.qzz.io&type=ws&host=cl1.ratech.qzz.io&path=%2Fvpnjantit#🇨🇱 𝙸𝙰𝙼 ☆𝟼
 vless://bb7ca8e0-e209-11f1-a614-5f78500cf23c@104.18.37.127:443?encryption=none&security=tls&sni=sa3.ratech.qzz.io&type=ws&host=sa3.ratech.qzz.io&path=%2Fvpnjantit#🇿🇦 𝙸𝙰𝙼 ☆𝟼
