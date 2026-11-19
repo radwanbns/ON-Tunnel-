@@ -268,50 +268,70 @@ private fun ServerPickerDialog(
     onSelect: (ServerEntry) -> Unit,
     onDismiss: () -> Unit
 ) {
+    var query by remember { mutableStateOf("") }
+    var showAll by remember { mutableStateOf(false) }
+    val recommended = servers.filter { it.locked || it.id == selectedId }
+    val source = if (showAll) servers else recommended.ifEmpty { servers.take(6) }
+    val filtered = source.filter { it.name.contains(query, ignoreCase = true) }
     BackHandler { onDismiss() }
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = true)
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Surface(
-            modifier = Modifier.fillMaxWidth().widthIn(max = 360.dp).heightIn(max = 420.dp),
-            shape = RoundedCornerShape(18.dp),
-            color = SurfaceC
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp).widthIn(max = 390.dp).heightIn(max = 260.dp, max = 610.dp),
+            shape = RoundedCornerShape(26.dp),
+            color = SurfaceC,
+            border = BorderStroke(1.dp, Accent.copy(alpha = 0.22f))
         ) {
-            Column {
+            Column(Modifier.padding(14.dp)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(28.dp),
+                    placeholder = { Text("Search network name") },
+                    leadingIcon = { Icon(Icons.Default.Search, null, tint = Accent) }
+                )
+                Spacer(Modifier.height(10.dp))
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).border(1.5.dp, Accent, RoundedCornerShape(24.dp))
                 ) {
-                    Text("Select Server", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-                    Text("${servers.size}", color = Accent, fontWeight = FontWeight.Bold)
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close server list")
-                    }
+                    Box(
+                        Modifier.weight(1f).clip(RoundedCornerShape(topStart = 22.dp, bottomStart = 22.dp))
+                            .background(if (!showAll) SurfaceHigh else SurfaceC)
+                            .clickable { showAll = false }.padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) { Text("Recommended", color = TextMain, fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
+                    Box(
+                        Modifier.weight(1f).clip(RoundedCornerShape(topEnd = 22.dp, bottomEnd = 22.dp))
+                            .background(if (showAll) Accent else SurfaceC)
+                            .clickable { showAll = true }.padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) { Text("All Networks", color = if (showAll) Color.White else TextMain, fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
                 }
-                if (servers.isEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                if (filtered.isEmpty()) {
                     Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        Text("No servers available", color = TextMuted)
+                        Text(if (servers.isEmpty()) "No servers available" else "No matching servers", color = TextMuted)
                     }
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth().weight(1f),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                        verticalArrangement = Arrangement.spacedBy(9.dp)
+                        contentPadding = PaddingValues(vertical = 3.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(servers, key = { it.id }) { entry ->
+                        items(filtered, key = { it.id }) { entry ->
                             Card(
                                 onClick = { onSelect(entry) },
                                 shape = RoundedCornerShape(18.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (entry.id == selectedId) SurfaceHigh else SurfaceC
-                                ),
-                                border = if (entry.id == selectedId) BorderStroke(1.5.dp, Accent)
-                                    else BorderStroke(0.dp, Color.Transparent),
+                                colors = CardDefaults.cardColors(containerColor = SurfaceC),
+                                border = BorderStroke(if (entry.id == selectedId) 2.dp else 1.5.dp, Accent),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
-                                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp),
+                                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
@@ -320,30 +340,23 @@ private fun ServerPickerDialog(
                                         tint = if (entry.id == selectedId) Accent else TextMuted
                                     )
                                     Spacer(Modifier.width(12.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text(
-                                            entry.name,
-                                            color = TextMain,
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(badgeFor(entry), color = TextMuted, fontSize = 11.sp)
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Text(entry.name, color = TextMain, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(badgeFor(entry), color = TextMuted, fontSize = 11.sp, maxLines = 1)
                                     }
-                                    if (entry.locked) {
-                                        Icon(Icons.Default.Lock, contentDescription = "Locked", tint = TextMuted, modifier = Modifier.size(16.dp))
-                                    }
+                                    if (entry.locked) Icon(Icons.Default.Lock, "Locked", tint = TextMuted, modifier = Modifier.size(16.dp))
                                 }
                             }
                         }
                     }
                 }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) { Text("CLOSE", color = Accent) }
+                }
             }
         }
     }
 }
-
 private class EditorTarget(val entry: ServerEntry?, val profile: ServerProfile)
 private class OvpnEditorTarget(val entry: ServerEntry?, val profile: OvpnProfile)
 private class SshEditorTarget(val entry: ServerEntry?, val profile: SshProfile)
