@@ -897,6 +897,11 @@ internal fun ONTunnelApp(
                                                 }
                                             )
                                             DropdownMenuItem(
+                                                text = { Text("Telegram channel") },
+                                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Send, null) },
+                                                onClick = { menuOpen = false; openTelegram(context) }
+                                            )
+                                            DropdownMenuItem(
                                                 text = { Text("Delete added servers") },
                                                 leadingIcon = { Icon(Icons.Default.Delete, null, tint = RedErr) },
                                                 onClick = { menuOpen = false; confirmDeleteAll = true }
@@ -904,17 +909,7 @@ internal fun ONTunnelApp(
                                         }
                                     }
                                 },
-                                actions = {
-                                    if (currentTab == "HOME") {
-                                        IconButton(onClick = { openTelegram(context) }) {
-                                            Icon(
-                                                Icons.AutoMirrored.Filled.Send,
-                                                contentDescription = "Telegram channel",
-                                                tint = Accent
-                                            )
-                                        }
-                                    }
-                                },
+                                actions = {},
                                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                                     containerColor = Color.Transparent,
                                     titleContentColor = TextMain,
