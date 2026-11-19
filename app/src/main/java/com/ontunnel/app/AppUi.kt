@@ -853,7 +853,7 @@ internal fun ONTunnelApp(
                                     Text("ON Tunnel", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
                                 },
                                 navigationIcon = {
-                                    Box {
+                                    if (currentTab == "CONFIG") Box {
                                         IconButton(onClick = { menuOpen = true }) {
                                             Icon(Icons.Default.MoreVert, "Menu")
                                         }
@@ -866,26 +866,6 @@ internal fun ONTunnelApp(
                                                 },
                                                 enabled = !isUpdating,
                                                 onClick = { menuOpen = false; runUpdate(auto = false) }
-                                            )
-                                            DropdownMenuItem(
-                                                text = {
-                                                    Text(
-                                                        when (themeMode) {
-                                                            "light" -> "Theme: Light"
-                                                            "dark" -> "Theme: Dark"
-                                                            else -> "Theme: Auto"
-                                                        }
-                                                    )
-                                                },
-                                                leadingIcon = { Icon(Icons.Default.BrightnessMedium, null) },
-                                                onClick = {
-                                                    themeMode = when (themeMode) {
-                                                        "system" -> "light"
-                                                        "light" -> "dark"
-                                                        else -> "system"
-                                                    }
-                                                    store.themeMode = themeMode
-                                                }
                                             )
                                             DropdownMenuItem(
                                                 text = { Text("Add server") },
