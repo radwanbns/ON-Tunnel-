@@ -723,22 +723,11 @@ internal fun ONTunnelApp(
                         horizontalDrag += dragAmount
                     },
                     onDragEnd = {
-                        // RTL navigation: swipe right to move HOME → SERVERS → LOGS → MORE.
-                        // Swipe left moves back through the same pages.
+                        // Swipe between HOME, LOGS and ABOUT. Server selection stays on HOME.
                         if (horizontalDrag > 60f) {
-                            currentTab = when (currentTab) {
-                                "HOME" -> "CONFIG"
-                                "CONFIG" -> "LOGS"
-                                "LOGS" -> "MORE"
-                                else -> "MORE"
-                            }
+                            currentTab = if (currentTab == "HOME") "LOGS" else "MORE"
                         } else if (horizontalDrag < -60f) {
-                            currentTab = when (currentTab) {
-                                "MORE" -> "LOGS"
-                                "LOGS" -> "CONFIG"
-                                "CONFIG" -> "HOME"
-                                else -> "HOME"
-                            }
+                            currentTab = if (currentTab == "MORE") "LOGS" else "HOME"
                         }
                         horizontalDrag = 0f
                     },
@@ -820,7 +809,7 @@ internal fun ONTunnelApp(
                         store.themeMode = it
                     },
                     onHome = { currentTab = "HOME" },
-                    onServers = { currentTab = "CONFIG" },
+                    onServers = { currentTab = "HOME" },
                     onLogs = { currentTab = "LOGS" }
                 )
             } else {
@@ -842,7 +831,7 @@ internal fun ONTunnelApp(
                             HomeConfigLogsBottomBar(
                                 selectedTab = currentTab,
                                 onHome = { currentTab = "HOME" },
-                                onConfig = { currentTab = "CONFIG" },
+                                onConfig = { currentTab = "HOME" },
                                 onLogs = { currentTab = "LOGS" },
                                 onMore = { currentTab = "MORE" }
                             )
@@ -855,7 +844,7 @@ internal fun ONTunnelApp(
                                 navigationIcon = {
                                     Box {
                                         IconButton(onClick = { menuOpen = true }) {
-                                            Icon(Icons.Default.MoreVert, "Menu")
+                                            Icon(Icons.Default.Menu, "Open menu")
                                         }
                                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                                             DropdownMenuItem(
@@ -1602,7 +1591,7 @@ private fun MoreScreen(
             HomeConfigLogsBottomBar(
                 selectedTab = "MORE",
                 onHome = onHome,
-                onConfig = onServers,
+                onConfig = onHome,
                 onLogs = onLogs,
                 onMore = {}
             )
@@ -2179,12 +2168,6 @@ private fun HomeConfigLogsBottomBar(
             label = { Text("HOME") }
         )
         NavigationBarItem(
-            selected = selectedTab == "CONFIG",
-            onClick = onConfig,
-            icon = { Icon(Icons.Default.Dns, contentDescription = "Configurations") },
-            label = { Text("SERVERS") }
-        )
-        NavigationBarItem(
             selected = selectedTab == "LOGS",
             onClick = onLogs,
             icon = { Icon(Icons.Default.ReceiptLong, contentDescription = "Logs") },
@@ -2194,7 +2177,7 @@ private fun HomeConfigLogsBottomBar(
             selected = selectedTab == "MORE",
             onClick = onMore,
             icon = { Icon(Icons.Default.MoreHoriz, contentDescription = "More") },
-            label = { Text("MORE") }
+            label = { Text("ABOUT") }
         )
         }
     }
