@@ -268,70 +268,50 @@ private fun ServerPickerDialog(
     onSelect: (ServerEntry) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var query by remember { mutableStateOf("") }
-    var showAll by remember { mutableStateOf(false) }
-    val recommended = servers.filter { it.locked || it.id == selectedId }
-    val source = if (showAll) servers else recommended.ifEmpty { servers.take(6) }
-    val filtered = source.filter { it.name.contains(query, ignoreCase = true) }
     BackHandler { onDismiss() }
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = true)
     ) {
         Surface(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp).widthIn(max = 390.dp).heightIn(min = 260.dp, max = 610.dp),
-            shape = RoundedCornerShape(26.dp),
-            color = SurfaceC,
-            border = BorderStroke(1.dp, Accent.copy(alpha = 0.22f))
+            modifier = Modifier.fillMaxWidth().widthIn(max = 360.dp).heightIn(max = 420.dp),
+            shape = RoundedCornerShape(18.dp),
+            color = SurfaceC
         ) {
-            Column(Modifier.padding(14.dp)) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(28.dp),
-                    placeholder = { Text("Search network name") },
-                    leadingIcon = { Icon(Icons.Default.Search, null, tint = Accent) }
-                )
-                Spacer(Modifier.height(10.dp))
+            Column {
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).border(1.5.dp, Accent, RoundedCornerShape(24.dp))
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        Modifier.weight(1f).clip(RoundedCornerShape(topStart = 22.dp, bottomStart = 22.dp))
-                            .background(if (!showAll) SurfaceHigh else SurfaceC)
-                            .clickable { showAll = false }.padding(vertical = 12.dp),
-                        contentAlignment = Alignment.Center
-                    ) { Text("Recommended", color = TextMain, fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
-                    Box(
-                        Modifier.weight(1f).clip(RoundedCornerShape(topEnd = 22.dp, bottomEnd = 22.dp))
-                            .background(if (showAll) Accent else SurfaceC)
-                            .clickable { showAll = true }.padding(vertical = 12.dp),
-                        contentAlignment = Alignment.Center
-                    ) { Text("All Networks", color = if (showAll) Color.White else TextMain, fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
+                    Text("Select Server", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                    Text("${servers.size}", color = Accent, fontWeight = FontWeight.Bold)
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close server list")
+                    }
                 }
-                Spacer(Modifier.height(12.dp))
-                if (filtered.isEmpty()) {
+                if (servers.isEmpty()) {
                     Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        Text(if (servers.isEmpty()) "No servers available" else "No matching servers", color = TextMuted)
+                        Text("No servers available", color = TextMuted)
                     }
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth().weight(1f),
-                        contentPadding = PaddingValues(vertical = 3.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
                     ) {
-                        items(filtered, key = { it.id }) { entry ->
+                        items(servers, key = { it.id }) { entry ->
                             Card(
                                 onClick = { onSelect(entry) },
                                 shape = RoundedCornerShape(18.dp),
-                                colors = CardDefaults.cardColors(containerColor = SurfaceC),
-                                border = BorderStroke(if (entry.id == selectedId) 2.dp else 1.5.dp, Accent),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (entry.id == selectedId) SurfaceHigh else SurfaceC
+                                ),
+                                border = if (entry.id == selectedId) BorderStroke(1.5.dp, Accent)
+                                    else BorderStroke(0.dp, Color.Transparent),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
-                                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+                                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
@@ -340,23 +320,30 @@ private fun ServerPickerDialog(
                                         tint = if (entry.id == selectedId) Accent else TextMuted
                                     )
                                     Spacer(Modifier.width(12.dp))
-                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                        Text(entry.name, color = TextMain, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(badgeFor(entry), color = TextMuted, fontSize = 11.sp, maxLines = 1)
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            entry.name,
+                                            color = TextMain,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(badgeFor(entry), color = TextMuted, fontSize = 11.sp)
                                     }
-                                    if (entry.locked) Icon(Icons.Default.Lock, "Locked", tint = TextMuted, modifier = Modifier.size(16.dp))
+                                    if (entry.locked) {
+                                        Icon(Icons.Default.Lock, contentDescription = "Locked", tint = TextMuted, modifier = Modifier.size(16.dp))
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onDismiss) { Text("CLOSE", color = Accent) }
-                }
             }
         }
     }
 }
+
 private class EditorTarget(val entry: ServerEntry?, val profile: ServerProfile)
 private class OvpnEditorTarget(val entry: ServerEntry?, val profile: OvpnProfile)
 private class SshEditorTarget(val entry: ServerEntry?, val profile: SshProfile)
@@ -398,9 +385,6 @@ internal fun ONTunnelApp(
     var isUpdating by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var currentTab by rememberSaveable { mutableStateOf("HOME") }
-    LaunchedEffect(currentTab) {
-        if (currentTab == "CONFIG") currentTab = "HOME"
-    }
     var showAddSheet by remember { mutableStateOf(false) }
     var showRewardAd by remember { mutableStateOf(false) }
     var showServerPicker by remember { mutableStateOf(false) }
@@ -739,11 +723,22 @@ internal fun ONTunnelApp(
                         horizontalDrag += dragAmount
                     },
                     onDragEnd = {
-                        // Swipe between HOME, LOGS and ABOUT. Server selection stays on HOME.
+                        // RTL navigation: swipe right to move HOME → SERVERS → LOGS → MORE.
+                        // Swipe left moves back through the same pages.
                         if (horizontalDrag > 60f) {
-                            currentTab = if (currentTab == "HOME") "LOGS" else "MORE"
+                            currentTab = when (currentTab) {
+                                "HOME" -> "CONFIG"
+                                "CONFIG" -> "LOGS"
+                                "LOGS" -> "MORE"
+                                else -> "MORE"
+                            }
                         } else if (horizontalDrag < -60f) {
-                            currentTab = if (currentTab == "MORE") "LOGS" else "HOME"
+                            currentTab = when (currentTab) {
+                                "MORE" -> "LOGS"
+                                "LOGS" -> "CONFIG"
+                                "CONFIG" -> "HOME"
+                                else -> "HOME"
+                            }
                         }
                         horizontalDrag = 0f
                     },
@@ -825,7 +820,7 @@ internal fun ONTunnelApp(
                         store.themeMode = it
                     },
                     onHome = { currentTab = "HOME" },
-                    onServers = { currentTab = "HOME" },
+                    onServers = { currentTab = "CONFIG" },
                     onLogs = { currentTab = "LOGS" }
                 )
             } else {
@@ -847,7 +842,7 @@ internal fun ONTunnelApp(
                             HomeConfigLogsBottomBar(
                                 selectedTab = currentTab,
                                 onHome = { currentTab = "HOME" },
-                                onConfig = { currentTab = "HOME" },
+                                onConfig = { currentTab = "CONFIG" },
                                 onLogs = { currentTab = "LOGS" },
                                 onMore = { currentTab = "MORE" }
                             )
@@ -860,7 +855,7 @@ internal fun ONTunnelApp(
                                 navigationIcon = {
                                     Box {
                                         IconButton(onClick = { menuOpen = true }) {
-                                            Icon(Icons.Default.Menu, "Open menu")
+                                            Icon(Icons.Default.MoreVert, "Menu")
                                         }
                                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                                             DropdownMenuItem(
@@ -941,10 +936,10 @@ internal fun ONTunnelApp(
                                     }
                                 },
                                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                                    containerColor = Accent,
-                                    titleContentColor = Color.White,
-                                    navigationIconContentColor = Color.White,
-                                    actionIconContentColor = Color.White
+                                    containerColor = Color.Transparent,
+                                    titleContentColor = TextMain,
+                                    navigationIconContentColor = TextMain,
+                                    actionIconContentColor = TextMain
                                 )
                             )
                         }
@@ -974,7 +969,7 @@ internal fun ONTunnelApp(
                                     ) {
                                         Icon(Icons.Default.Dns, contentDescription = null)
                                         Spacer(Modifier.width(8.dp))
-                                        Text("CHOOSE SERVER")
+                                        Text("SELECT SERVER")
                                     }
                                 }
                                 item(key = "time_credit") {
@@ -1607,7 +1602,7 @@ private fun MoreScreen(
             HomeConfigLogsBottomBar(
                 selectedTab = "MORE",
                 onHome = onHome,
-                onConfig = onHome,
+                onConfig = onServers,
                 onLogs = onLogs,
                 onMore = {}
             )
@@ -1798,80 +1793,104 @@ private fun ConnectHero(
     busyLocked: Boolean,
     onClick: () -> Unit
 ) {
-    val connected = status == VpnStatus.Connected
-    val connecting = status == VpnStatus.Connecting || status == VpnStatus.Disconnecting
-    val statusColor = when (status) {
+    val active = status == VpnStatus.Connected || status == VpnStatus.Connecting
+    val target = when (status) {
         VpnStatus.Connected -> GreenOk
-        VpnStatus.Disconnected -> RedErr
+        VpnStatus.Disconnected -> Accent
         else -> Amber
     }
+    val color by animateColorAsState(target, label = "hero")
     val label = when (status) {
-        VpnStatus.Connected -> "CONNECTED"
-        VpnStatus.Connecting -> "CONNECTING..."
-        VpnStatus.Disconnecting -> "DISCONNECTING..."
-        VpnStatus.Disconnected -> "DISCONNECTED"
+        VpnStatus.Connected -> "Connected"
+        VpnStatus.Connecting -> "Connecting…"
+        VpnStatus.Disconnecting -> "Disconnecting…"
+        VpnStatus.Disconnected -> "Not connected"
     }
+
     val elapsed by produceState(0L, status) {
         if (status == VpnStatus.Connected) {
-            val started = System.currentTimeMillis()
+            val t0 = System.currentTimeMillis()
             while (true) {
-                value = (System.currentTimeMillis() - started) / 1000L
+                value = (System.currentTimeMillis() - t0) / 1000
                 delay(1000)
             }
-        } else value = 0L
+        } else {
+            value = 0L
+        }
     }
+
+    val infinite = rememberInfiniteTransition(label = "pulse")
+    val pulse by infinite.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(2400, easing = LinearEasing), RepeatMode.Restart),
+        label = "pulseValue"
+    )
+
     Column(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)
-            .clip(RoundedCornerShape(24.dp)).background(SurfaceC)
-            .padding(horizontal = 18.dp, vertical = 20.dp),
+        Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(label, color = statusColor, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-        Spacer(Modifier.height(5.dp))
-        Text(
-            when {
-                connected -> formatElapsed(elapsed)
-                !detail.isNullOrBlank() -> detail
-                else -> "Choose a server and start your connection"
-            },
-            color = TextMuted,
-            fontSize = 13.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Spacer(Modifier.height(20.dp))
-        Button(
-            onClick = onClick,
-            enabled = !busyLocked,
-            modifier = Modifier.fillMaxWidth().height(58.dp),
-            shape = RoundedCornerShape(30.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = if (connected) RedErr else Accent)
-        ) {
-            if (connecting) {
-                CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
-                Spacer(Modifier.width(10.dp))
-            } else {
-                Icon(Icons.Default.PowerSettingsNew, null, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(9.dp))
+        Box(Modifier.size(236.dp), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.fillMaxSize()) {
+                val maxR = size.minDimension / 2f
+                // static halo
+                drawCircle(color.copy(alpha = 0.07f), radius = maxR * 0.86f)
+                drawCircle(color.copy(alpha = 0.13f), radius = maxR * 0.66f)
+                if (active) {
+                    for (i in 0..1) {
+                        val f = (pulse + i * 0.5f) % 1f
+                        drawCircle(
+                            color.copy(alpha = (1f - f) * 0.35f),
+                            radius = maxR * (0.56f + 0.44f * f),
+                            style = Stroke(width = 2.5.dp.toPx())
+                        )
+                    }
+                }
             }
-            Text(if (connected) "STOP" else if (connecting) "PLEASE WAIT" else "START", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Box(
+                Modifier.size(128.dp)
+                    .shadow(18.dp, CircleShape, ambientColor = color, spotColor = color)
+                    .clip(CircleShape)
+                    .background(Brush.linearGradient(listOf(color, color.copy(alpha = 0.72f))))
+                    .clickable(enabled = !busyLocked, onClick = onClick),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.PowerSettingsNew, contentDescription = "Connect", tint = OnHero, modifier = Modifier.size(56.dp))
+            }
+            if (status == VpnStatus.Connecting || status == VpnStatus.Disconnecting) {
+                CircularProgressIndicator(Modifier.size(150.dp), color = color, strokeWidth = 3.dp)
+            }
         }
-        Spacer(Modifier.height(14.dp))
+        Text(label, color = color, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+        Spacer(Modifier.height(2.dp))
+        val sub = when {
+            status == VpnStatus.Connected -> formatElapsed(elapsed)
+            !detail.isNullOrBlank() -> detail
+            status == VpnStatus.Disconnected -> "Tap the button to connect"
+            else -> ""
+        }
+        Text(sub, color = TextMuted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(10.dp))
         Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-                .background(Bg).padding(horizontal = 12.dp, vertical = 11.dp),
+            Modifier.clip(RoundedCornerShape(24.dp)).background(SurfaceC)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.Dns, null, tint = Accent)
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Selected server", color = TextMuted, fontSize = 11.sp)
-                Text(serverName ?: "No server selected", color = TextMain, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Icon(Icons.Default.Public, null, tint = Accent, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                serverName ?: "No server selected",
+                color = TextMain, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp)
+            )
+            if (serverBadge != null) {
+                Spacer(Modifier.width(8.dp))
+                BadgeChip(serverBadge)
             }
-            if (serverBadge != null) BadgeChip(serverBadge)
         }
     }
 }
+
 @Composable
 private fun HtmlServerNote(html: String) {
     AndroidView(
@@ -2152,45 +2171,30 @@ private fun HomeConfigLogsBottomBar(
     onMore: () -> Unit = {}
 ) {
     Box {
-        NavigationBar(containerColor = Accent) {
+        NavigationBar(containerColor = SurfaceC) {
             NavigationBarItem(
                 selected = selectedTab == "HOME",
                 onClick = onHome,
             icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-            label = { Text("HOME") },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = Color.White,
-                selectedTextColor = Color.White,
-                indicatorColor = GreenOk,
-                unselectedIconColor = Color.White.copy(alpha = 0.75f),
-                unselectedTextColor = Color.White.copy(alpha = 0.75f)
-            )
+            label = { Text("HOME") }
+        )
+        NavigationBarItem(
+            selected = selectedTab == "CONFIG",
+            onClick = onConfig,
+            icon = { Icon(Icons.Default.Dns, contentDescription = "Configurations") },
+            label = { Text("SERVERS") }
         )
         NavigationBarItem(
             selected = selectedTab == "LOGS",
             onClick = onLogs,
             icon = { Icon(Icons.Default.ReceiptLong, contentDescription = "Logs") },
-            label = { Text("LOGS") },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = Color.White,
-                selectedTextColor = Color.White,
-                indicatorColor = GreenOk,
-                unselectedIconColor = Color.White.copy(alpha = 0.75f),
-                unselectedTextColor = Color.White.copy(alpha = 0.75f)
-            )
+            label = { Text("LOGS") }
         )
         NavigationBarItem(
             selected = selectedTab == "MORE",
             onClick = onMore,
             icon = { Icon(Icons.Default.MoreHoriz, contentDescription = "More") },
-            label = { Text("ABOUT") },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = Color.White,
-                selectedTextColor = Color.White,
-                indicatorColor = GreenOk,
-                unselectedIconColor = Color.White.copy(alpha = 0.75f),
-                unselectedTextColor = Color.White.copy(alpha = 0.75f)
-            )
+            label = { Text("MORE") }
         )
         }
     }
