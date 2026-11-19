@@ -961,17 +961,6 @@ internal fun ONTunnelApp(
                                         onClick = ::toggleConnect
                                     )
                                 }
-                                item(key = "select_server") {
-                                    Button(
-                                        onClick = { showServerPicker = true },
-                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                        shape = RoundedCornerShape(14.dp)
-                                    ) {
-                                        Icon(Icons.Default.Dns, contentDescription = null)
-                                        Spacer(Modifier.width(8.dp))
-                                        Text("SELECT SERVER")
-                                    }
-                                }
                                 item(key = "time_credit") {
                                     Row(
                                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
