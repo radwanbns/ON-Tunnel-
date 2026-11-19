@@ -398,6 +398,9 @@ internal fun ONTunnelApp(
     var isUpdating by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var currentTab by rememberSaveable { mutableStateOf("HOME") }
+    LaunchedEffect(currentTab) {
+        if (currentTab == "CONFIG") currentTab = "HOME"
+    }
     var showAddSheet by remember { mutableStateOf(false) }
     var showRewardAd by remember { mutableStateOf(false) }
     var showServerPicker by remember { mutableStateOf(false) }
