@@ -271,16 +271,16 @@ private fun ServerPickerDialog(
     BackHandler { onDismiss() }
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = true)
     ) {
         Surface(
-            modifier = Modifier.fillMaxSize().padding(10.dp),
+            modifier = Modifier.fillMaxWidth().widthIn(max = 360.dp).heightIn(max = 420.dp),
             shape = RoundedCornerShape(18.dp),
             color = SurfaceC
         ) {
             Column {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("Select Server", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
@@ -296,7 +296,7 @@ private fun ServerPickerDialog(
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth().weight(1f),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                         verticalArrangement = Arrangement.spacedBy(9.dp)
                     ) {
                         items(servers, key = { it.id }) { entry ->
@@ -311,7 +311,7 @@ private fun ServerPickerDialog(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
-                                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp),
+                                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
