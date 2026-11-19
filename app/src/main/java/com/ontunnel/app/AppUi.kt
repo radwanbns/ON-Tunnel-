@@ -2154,7 +2154,14 @@ private fun HomeConfigLogsBottomBar(
                 selected = selectedTab == "HOME",
                 onClick = onHome,
             icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-            label = { Text("HOME") }
+            label = { Text("HOME") },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = Color.White,
+                selectedTextColor = Color.White,
+                indicatorColor = GreenOk,
+                unselectedIconColor = Color.White.copy(alpha = 0.75f),
+                unselectedTextColor = Color.White.copy(alpha = 0.75f)
+            )
         )
         NavigationBarItem(
             selected = selectedTab == "LOGS",
