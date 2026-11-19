@@ -27,46 +27,46 @@ import androidx.compose.foundation.text.KeyboardOptions
 
 /** Current theme flag. Read inside composition, so every screen recomposes when it changes. */
 internal object Pal {
-    var dark by mutableStateOf(true)
+    var dark by mutableStateOf(false)
 }
 
-internal val Bg: Color get() = if (Pal.dark) Color(0xFF0B1220) else Color(0xFFF4F7FB)
-internal val SurfaceC: Color get() = if (Pal.dark) Color(0xFF131E33) else Color(0xFFFFFFFF)
-internal val SurfaceHigh: Color get() = if (Pal.dark) Color(0xFF1B2A47) else Color(0xFFE0F3F9)
-internal val Accent: Color get() = if (Pal.dark) Color(0xFF00C2E8) else Color(0xFF0088A8)
-internal val GreenOk: Color get() = if (Pal.dark) Color(0xFF2ECC71) else Color(0xFF1E9E55)
+internal val Bg: Color get() = if (Pal.dark) Color(0xFF082713) else Color(0xFFF2F4F3)
+internal val SurfaceC: Color get() = if (Pal.dark) Color(0xFF103D20) else Color(0xFFFFFFFF)
+internal val SurfaceHigh: Color get() = if (Pal.dark) Color(0xFF174D29) else Color(0xFFE2F2E5)
+internal val Accent: Color get() = if (Pal.dark) Color(0xFF0A7D25) else Color(0xFF087D25)
+internal val GreenOk: Color get() = if (Pal.dark) Color(0xFF20A447) else Color(0xFF1E9E55)
 internal val Amber: Color get() = if (Pal.dark) Color(0xFFF5A623) else Color(0xFFE08A00)
 internal val RedErr: Color get() = if (Pal.dark) Color(0xFFFF5C6C) else Color(0xFFD93646)
-internal val TextMain: Color get() = if (Pal.dark) Color(0xFFE8EEF7) else Color(0xFF0F1A2B)
-internal val TextMuted: Color get() = if (Pal.dark) Color(0xFF8A9BB5) else Color(0xFF5B6B84)
+internal val TextMain: Color get() = if (Pal.dark) Color(0xFFE8EEF7) else Color(0xFF111A13)
+internal val TextMuted: Color get() = if (Pal.dark) Color(0xFF8A9BB5) else Color(0xFF667268)
 /** Icon colour drawn on top of the big connect button. */
-internal val OnHero: Color get() = if (Pal.dark) Color(0xFF06101F) else Color.White
+internal val OnHero: Color get() = if (Pal.dark) Color(0xFFFFFFFF) else Color.White
 
 private val DarkScheme = darkColorScheme(
-    primary = Color(0xFF00C2E8),
-    onPrimary = Color(0xFF00232B),
-    secondary = Color(0xFF00C2E8),
-    background = Color(0xFF0B1220),
+    primary = Color(0xFF0A7D25),
+    onPrimary = Color(0xFFFFFFFF),
+    secondary = Color(0xFF0A7D25),
+    background = Color(0xFF082713),
     onBackground = Color(0xFFE8EEF7),
-    surface = Color(0xFF131E33),
+    surface = Color(0xFF103D20),
     onSurface = Color(0xFFE8EEF7),
-    surfaceVariant = Color(0xFF1B2A47),
+    surfaceVariant = Color(0xFF174D29),
     onSurfaceVariant = Color(0xFF8A9BB5),
-    outline = Color(0xFF3A4A66),
+    outline = Color(0xFF9BA99D),
     error = Color(0xFFFF5C6C)
 )
 
 private val LightScheme = lightColorScheme(
-    primary = Color(0xFF0088A8),
+    primary = Color(0xFF087D25),
     onPrimary = Color.White,
-    secondary = Color(0xFF0088A8),
-    background = Color(0xFFF4F7FB),
-    onBackground = Color(0xFF0F1A2B),
+    secondary = Color(0xFF087D25),
+    background = Color(0xFFF2F4F3),
+    onBackground = Color(0xFF111A13),
     surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF0F1A2B),
-    surfaceVariant = Color(0xFFE0F3F9),
-    onSurfaceVariant = Color(0xFF5B6B84),
-    outline = Color(0xFFB4C0D2),
+    onSurface = Color(0xFF111A13),
+    surfaceVariant = Color(0xFFE2F2E5),
+    onSurfaceVariant = Color(0xFF667268),
+    outline = Color(0xFFB7C4B9),
     error = Color(0xFFD93646)
 )
 
