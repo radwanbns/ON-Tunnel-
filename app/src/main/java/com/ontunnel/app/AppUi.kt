@@ -938,10 +938,10 @@ internal fun ONTunnelApp(
                                     }
                                 },
                                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                                    containerColor = Color.Transparent,
-                                    titleContentColor = TextMain,
-                                    navigationIconContentColor = TextMain,
-                                    actionIconContentColor = TextMain
+                                    containerColor = Accent,
+                                    titleContentColor = Color.White,
+                                    navigationIconContentColor = Color.White,
+                                    actionIconContentColor = Color.White
                                 )
                             )
                         }
@@ -971,7 +971,7 @@ internal fun ONTunnelApp(
                                     ) {
                                         Icon(Icons.Default.Dns, contentDescription = null)
                                         Spacer(Modifier.width(8.dp))
-                                        Text("SELECT SERVER")
+                                        Text("CHOOSE SERVER")
                                     }
                                 }
                                 item(key = "time_credit") {
@@ -2149,7 +2149,7 @@ private fun HomeConfigLogsBottomBar(
     onMore: () -> Unit = {}
 ) {
     Box {
-        NavigationBar(containerColor = SurfaceC) {
+        NavigationBar(containerColor = Accent) {
             NavigationBarItem(
                 selected = selectedTab == "HOME",
                 onClick = onHome,
@@ -2160,13 +2160,27 @@ private fun HomeConfigLogsBottomBar(
             selected = selectedTab == "LOGS",
             onClick = onLogs,
             icon = { Icon(Icons.Default.ReceiptLong, contentDescription = "Logs") },
-            label = { Text("LOGS") }
+            label = { Text("LOGS") },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = Color.White,
+                selectedTextColor = Color.White,
+                indicatorColor = GreenOk,
+                unselectedIconColor = Color.White.copy(alpha = 0.75f),
+                unselectedTextColor = Color.White.copy(alpha = 0.75f)
+            )
         )
         NavigationBarItem(
             selected = selectedTab == "MORE",
             onClick = onMore,
             icon = { Icon(Icons.Default.MoreHoriz, contentDescription = "More") },
-            label = { Text("ABOUT") }
+            label = { Text("ABOUT") },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = Color.White,
+                selectedTextColor = Color.White,
+                indicatorColor = GreenOk,
+                unselectedIconColor = Color.White.copy(alpha = 0.75f),
+                unselectedTextColor = Color.White.copy(alpha = 0.75f)
+            )
         )
         }
     }
