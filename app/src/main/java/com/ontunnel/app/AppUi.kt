@@ -279,7 +279,7 @@ private fun ServerPickerDialog(
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Surface(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp).widthIn(max = 390.dp).heightIn(max = 260.dp, max = 610.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp).widthIn(max = 390.dp).heightIn(min = 260.dp, max = 610.dp),
             shape = RoundedCornerShape(26.dp),
             color = SurfaceC,
             border = BorderStroke(1.dp, Accent.copy(alpha = 0.22f))
@@ -1795,104 +1795,80 @@ private fun ConnectHero(
     busyLocked: Boolean,
     onClick: () -> Unit
 ) {
-    val active = status == VpnStatus.Connected || status == VpnStatus.Connecting
-    val target = when (status) {
+    val connected = status == VpnStatus.Connected
+    val connecting = status == VpnStatus.Connecting || status == VpnStatus.Disconnecting
+    val statusColor = when (status) {
         VpnStatus.Connected -> GreenOk
-        VpnStatus.Disconnected -> Accent
+        VpnStatus.Disconnected -> RedErr
         else -> Amber
     }
-    val color by animateColorAsState(target, label = "hero")
     val label = when (status) {
-        VpnStatus.Connected -> "Connected"
-        VpnStatus.Connecting -> "Connecting…"
-        VpnStatus.Disconnecting -> "Disconnecting…"
-        VpnStatus.Disconnected -> "Not connected"
+        VpnStatus.Connected -> "CONNECTED"
+        VpnStatus.Connecting -> "CONNECTING..."
+        VpnStatus.Disconnecting -> "DISCONNECTING..."
+        VpnStatus.Disconnected -> "DISCONNECTED"
     }
-
     val elapsed by produceState(0L, status) {
         if (status == VpnStatus.Connected) {
-            val t0 = System.currentTimeMillis()
+            val started = System.currentTimeMillis()
             while (true) {
-                value = (System.currentTimeMillis() - t0) / 1000
+                value = (System.currentTimeMillis() - started) / 1000L
                 delay(1000)
             }
-        } else {
-            value = 0L
-        }
+        } else value = 0L
     }
-
-    val infinite = rememberInfiniteTransition(label = "pulse")
-    val pulse by infinite.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2400, easing = LinearEasing), RepeatMode.Restart),
-        label = "pulseValue"
-    )
-
     Column(
-        Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 10.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)
+            .clip(RoundedCornerShape(24.dp)).background(SurfaceC)
+            .padding(horizontal = 18.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(Modifier.size(236.dp), contentAlignment = Alignment.Center) {
-            Canvas(Modifier.fillMaxSize()) {
-                val maxR = size.minDimension / 2f
-                // static halo
-                drawCircle(color.copy(alpha = 0.07f), radius = maxR * 0.86f)
-                drawCircle(color.copy(alpha = 0.13f), radius = maxR * 0.66f)
-                if (active) {
-                    for (i in 0..1) {
-                        val f = (pulse + i * 0.5f) % 1f
-                        drawCircle(
-                            color.copy(alpha = (1f - f) * 0.35f),
-                            radius = maxR * (0.56f + 0.44f * f),
-                            style = Stroke(width = 2.5.dp.toPx())
-                        )
-                    }
-                }
+        Text(label, color = statusColor, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+        Spacer(Modifier.height(5.dp))
+        Text(
+            when {
+                connected -> formatElapsed(elapsed)
+                !detail.isNullOrBlank() -> detail
+                else -> "Choose a server and start your connection"
+            },
+            color = TextMuted,
+            fontSize = 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(20.dp))
+        Button(
+            onClick = onClick,
+            enabled = !busyLocked,
+            modifier = Modifier.fillMaxWidth().height(58.dp),
+            shape = RoundedCornerShape(30.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = if (connected) RedErr else Accent)
+        ) {
+            if (connecting) {
+                CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
+                Spacer(Modifier.width(10.dp))
+            } else {
+                Icon(Icons.Default.PowerSettingsNew, null, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(9.dp))
             }
-            Box(
-                Modifier.size(128.dp)
-                    .shadow(18.dp, CircleShape, ambientColor = color, spotColor = color)
-                    .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(color, color.copy(alpha = 0.72f))))
-                    .clickable(enabled = !busyLocked, onClick = onClick),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.PowerSettingsNew, contentDescription = "Connect", tint = OnHero, modifier = Modifier.size(56.dp))
-            }
-            if (status == VpnStatus.Connecting || status == VpnStatus.Disconnecting) {
-                CircularProgressIndicator(Modifier.size(150.dp), color = color, strokeWidth = 3.dp)
-            }
+            Text(if (connected) "STOP" else if (connecting) "PLEASE WAIT" else "START", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
-        Text(label, color = color, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-        Spacer(Modifier.height(2.dp))
-        val sub = when {
-            status == VpnStatus.Connected -> formatElapsed(elapsed)
-            !detail.isNullOrBlank() -> detail
-            status == VpnStatus.Disconnected -> "Tap the button to connect"
-            else -> ""
-        }
-        Text(sub, color = TextMuted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(14.dp))
         Row(
-            Modifier.clip(RoundedCornerShape(24.dp)).background(SurfaceC)
-                .padding(horizontal = 14.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                .background(Bg).padding(horizontal = 12.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.Public, null, tint = Accent, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(
-                serverName ?: "No server selected",
-                color = TextMain, fontSize = 14.sp, fontWeight = FontWeight.Medium,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp)
-            )
-            if (serverBadge != null) {
-                Spacer(Modifier.width(8.dp))
-                BadgeChip(serverBadge)
+            Icon(Icons.Default.Dns, null, tint = Accent)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Selected server", color = TextMuted, fontSize = 11.sp)
+                Text(serverName ?: "No server selected", color = TextMain, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+            if (serverBadge != null) BadgeChip(serverBadge)
         }
     }
 }
-
 @Composable
 private fun HtmlServerNote(html: String) {
     AndroidView(
