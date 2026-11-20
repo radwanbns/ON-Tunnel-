@@ -1771,18 +1771,6 @@ private fun ConnectHero(
         VpnStatus.Disconnected -> "Not connected"
     }
 
-    val elapsed by produceState(0L, status) {
-        if (status == VpnStatus.Connected) {
-            val t0 = System.currentTimeMillis()
-            while (true) {
-                value = (System.currentTimeMillis() - t0) / 1000
-                delay(1000)
-            }
-        } else {
-            value = 0L
-        }
-    }
-
     val infinite = rememberInfiniteTransition(label = "pulse")
     val pulse by infinite.animateFloat(
         initialValue = 0f, targetValue = 1f,
@@ -1828,12 +1816,14 @@ private fun ConnectHero(
         Text(label, color = color, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(2.dp))
         val sub = when {
-            status == VpnStatus.Connected -> formatElapsed(elapsed)
+            status == VpnStatus.Connected -> ""
             !detail.isNullOrBlank() -> detail
             status == VpnStatus.Disconnected -> "Tap the button to connect"
             else -> ""
         }
-        Text(sub, color = TextMuted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (sub.isNotEmpty()) {
+            Text(sub, color = TextMuted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
         Spacer(Modifier.height(10.dp))
         Row(
             Modifier.clip(RoundedCornerShape(24.dp)).background(SurfaceC)
