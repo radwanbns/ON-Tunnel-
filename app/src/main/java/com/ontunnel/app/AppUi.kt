@@ -83,184 +83,6 @@ private fun openTelegram(context: Context) {
     }
 }
 
-private const val ADSTERRA_SMARTLINK = "https://asiafilm.org/4/7b0958aa0beec71b026e4ee5b017f0c5"
-
-/**
- * Ad pages often use market:// or intent:// links for Google Play.
- * A plain WebViewClient does not launch these intents automatically.
- */
-private fun openAdStoreLink(context: Context, rawUrl: String): Boolean {
-    val uri = runCatching { Uri.parse(rawUrl) }.getOrNull() ?: return false
-    val scheme = uri.scheme?.lowercase().orEmpty()
-    val isPlayWebUrl = (uri.host?.lowercase() == "play.google.com" ||
-        uri.host?.lowercase() == "www.play.google.com") &&
-        uri.path?.startsWith("/store/apps") == true
-
-    if (scheme == "intent") {
-        val intent = runCatching {
-            Intent.parseUri(rawUrl, Intent.URI_INTENT_SCHEME).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-        }.getOrNull() ?: return true
-        try {
-            context.startActivity(intent)
-        } catch (_: ActivityNotFoundException) {
-            val fallback = intent.getStringExtra("browser_fallback_url")
-            val packageId = intent.getPackage()
-            val playUrl = when {
-                !fallback.isNullOrBlank() -> fallback
-                !packageId.isNullOrBlank() -> "https://play.google.com/store/apps/details?id=$packageId"
-                else -> null
-            }
-            if (playUrl != null) {
-                runCatching {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(playUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }
-            }
-        } catch (_: Exception) {
-            // Do not let a malformed ad intent crash the WebView.
-        }
-        return true
-    }
-
-    if (scheme == "market" || isPlayWebUrl) {
-        val marketUri = if (scheme == "market") uri else {
-            val appId = uri.getQueryParameter("id")
-            if (appId.isNullOrBlank()) null else Uri.parse("market://details?id=$appId")
-        }
-        if (marketUri != null) {
-            try {
-                context.startActivity(Intent(Intent.ACTION_VIEW, marketUri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                return true
-            } catch (_: ActivityNotFoundException) {
-                val fallback = if (isPlayWebUrl) rawUrl else {
-                    val appId = uri.getQueryParameter("id")
-                    if (appId.isNullOrBlank()) null else "https://play.google.com/store/apps/details?id=$appId"
-                }
-                if (fallback != null) {
-                    runCatching {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fallback)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    }
-                }
-                return true
-            } catch (_: Exception) {
-                return true
-            }
-        }
-        return true
-    }
-    return false
-}
-
-private fun createAdWebViewClient(context: Context) = object : android.webkit.WebViewClient() {
-    override fun shouldOverrideUrlLoading(
-        view: android.webkit.WebView?,
-        request: android.webkit.WebResourceRequest
-    ): Boolean = openAdStoreLink(context, request.url.toString())
-
-    @Suppress("DEPRECATION")
-    override fun shouldOverrideUrlLoading(view: android.webkit.WebView?, url: String?): Boolean =
-        url?.let { openAdStoreLink(context, it) } ?: false
-}
-
-@Composable
-private fun AdsterraWebViewDialog(onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    val adWebView = remember(context) {
-        android.webkit.WebView(context).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.loadsImagesAutomatically = true
-            settings.javaScriptCanOpenWindowsAutomatically = false
-            settings.setSupportMultipleWindows(false)
-            webViewClient = createAdWebViewClient(context)
-            webChromeClient = android.webkit.WebChromeClient()
-            loadUrl(ADSTERRA_SMARTLINK)
-        }
-    }
-    DisposableEffect(adWebView) {
-        onDispose { adWebView.destroy() }
-    }
-    androidx.activity.compose.BackHandler { onDismiss() }
-    androidx.compose.ui.window.Dialog(
-        onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false
-        )
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxSize().padding(10.dp),
-            shape = RoundedCornerShape(18.dp),
-            color = SurfaceC
-        ) {
-            Column {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Advertisement", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close advertisement")
-                    }
-                }
-                AndroidView(
-                    factory = { adWebView },
-                    modifier = Modifier.fillMaxWidth().weight(1f)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun AdsterraRewardDialog(onDismiss: () -> Unit, onReward: () -> Unit) {
-    var secondsLeft by remember { mutableStateOf(30) }
-    val context = LocalContext.current
-    val adWebView = remember(context) {
-        android.webkit.WebView(context).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.loadsImagesAutomatically = true
-            settings.javaScriptCanOpenWindowsAutomatically = false
-            settings.setSupportMultipleWindows(false)
-            webViewClient = createAdWebViewClient(context)
-            webChromeClient = android.webkit.WebChromeClient()
-            loadUrl(ADSTERRA_SMARTLINK)
-        }
-    }
-    DisposableEffect(adWebView) { onDispose { adWebView.destroy() } }
-    LaunchedEffect(Unit) {
-        while (secondsLeft > 0) {
-            delay(1000)
-            secondsLeft--
-        }
-    }
-    BackHandler { onDismiss() }
-    androidx.compose.ui.window.Dialog(
-        onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Surface(Modifier.fillMaxSize().padding(10.dp), shape = RoundedCornerShape(18.dp), color = SurfaceC) {
-            Column {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Advertisement", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-                    Text(if (secondsLeft > 0) "Wait ${secondsLeft}s" else "Ready", color = Accent)
-                }
-                AndroidView(factory = { adWebView }, modifier = Modifier.fillMaxWidth().weight(1f))
-                Button(
-                    onClick = onReward,
-                    enabled = secondsLeft == 0,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
-                ) { Text(if (secondsLeft > 0) "Please wait ${secondsLeft}s" else "CANCEL AND CLAIM 1 HOUR") }
-                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                    Text("Close without reward")
-                }
-            }
-        }
-    }
-}
-
-
 @Composable
 private fun ServerPickerDialog(
     servers: List<ServerEntry>,
@@ -357,8 +179,6 @@ private class SshEditorTarget(val entry: ServerEntry?, val profile: SshProfile)
 internal fun ONTunnelApp(
     status: VpnStatus,
     statusDetail: String?,
-    remainingMillis: Long,
-    onClaimReward: () -> Unit,
     error: String?,
     tampered: Boolean,
     onDismissError: () -> Unit,
@@ -386,7 +206,6 @@ internal fun ONTunnelApp(
     var menuOpen by remember { mutableStateOf(false) }
     var currentTab by rememberSaveable { mutableStateOf("HOME") }
     var showAddSheet by remember { mutableStateOf(false) }
-    var showRewardAd by remember { mutableStateOf(false) }
     var showServerPicker by remember { mutableStateOf(false) }
     var showServerUpdateDialog by remember { mutableStateOf(false) }
     var pendingServerList by remember { mutableStateOf<List<ServerEntry>?>(null) }
@@ -699,10 +518,6 @@ internal fun ONTunnelApp(
 
     fun toggleConnect() {
         if (tampered) { message("App integrity check failed – connection disabled"); return }
-        if (remainingMillis <= 0L && status != VpnStatus.Connected) {
-            message("Time is over. Watch the advertisement to add 1 hour.")
-            return
-        }
         if (status == VpnStatus.Connected || (status == VpnStatus.Connecting && statusDetail != null)) { onDisconnect(); return }
         val sel = servers.firstOrNull { it.id == selectedId }
         if (sel == null) message("Please select a server first") else onConnect(sel)
@@ -935,18 +750,6 @@ internal fun ONTunnelApp(
                                         busyLocked = status == VpnStatus.Disconnecting,
                                         onClick = ::toggleConnect
                                     )
-                                }
-                                item(key = "time_credit") {
-                                    Row(
-                                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(Modifier.weight(1f)) {
-                                            Text("Remaining time", color = TextMuted, fontSize = 12.sp)
-                                            Text(formatCreditTime(remainingMillis), color = TextMain, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                        Button(onClick = { showRewardAd = true }) { Text("ADD + 1 HOUR") }
-                                    }
                                 }
                                 // The imported .cot HTML note belongs in HOME's free content area,
                                 // not inside the server row in CONFIG.
@@ -1230,16 +1033,6 @@ internal fun ONTunnelApp(
                         select(entry.id)
                         showServerPicker = false
                         message("Selected: ${entry.name}")
-                    }
-                )
-            }
-
-            if (showRewardAd) {
-                AdsterraRewardDialog(
-                    onDismiss = { showRewardAd = false },
-                    onReward = {
-                        onClaimReward()
-                        showRewardAd = false
                     }
                 )
             }
