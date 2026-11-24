@@ -70,22 +70,6 @@ class MainActivity : ComponentActivity() {
     private var pendingConfig: String? = null
     private var incomingServerFileUri by mutableStateOf<Uri?>(null)
     private var status by mutableStateOf(if (ONTunnelVpnService.running) VpnStatus.Connected else VpnStatus.Disconnected)
-    private var remainingTimeMillis by mutableStateOf(0L)
-    private val creditPrefs by lazy { getSharedPreferences("on_tunnel_time_credit", MODE_PRIVATE) }
-    private val creditTicker = object : Runnable {
-        override fun run() {
-            if (status == VpnStatus.Connected) {
-                val next = (creditPrefs.getLong("remaining_millis", 0L) - 1000L).coerceAtLeast(0L)
-                remainingTimeMillis = next
-                creditPrefs.edit().putLong("remaining_millis", next).apply()
-                if (next == 0L) {
-                    AppLogs.add(this@MainActivity, "VPN time credit exhausted; disconnecting")
-                    disconnect()
-                }
-            }
-            mainHandler.postDelayed(this, 1000L)
-        }
-    }
     private var errorMessage by mutableStateOf<String?>(null)
     private var availableAppUpdate by mutableStateOf<AppUpdateInfo?>(null)
     private var updateDownloadId: Long = -1L
@@ -317,15 +301,6 @@ class MainActivity : ComponentActivity() {
             return
         }
         tamperDetected = false
-        if (!creditPrefs.getBoolean("initialized", false)) {
-            remainingTimeMillis = 10L * 60L * 1000L
-            creditPrefs.edit().putBoolean("initialized", true)
-                .putLong("remaining_millis", remainingTimeMillis).apply()
-        } else {
-            remainingTimeMillis = creditPrefs.getLong("remaining_millis", 0L).coerceAtLeast(0L)
-        }
-        mainHandler.removeCallbacks(creditTicker)
-        mainHandler.postDelayed(creditTicker, 1000L)
         if (intent?.action == Intent.ACTION_VIEW) incomingServerFileUri = intent.data
         val savedProto = getSharedPreferences("on_tunnel_core", MODE_PRIVATE).getString("active_proto", "").orEmpty()
         activeProto = if (ONTunnelVpnService.running) (if (SshTunnelService.running) "ssh" else "v2ray") else savedProto
@@ -369,8 +344,6 @@ class MainActivity : ComponentActivity() {
             ONTunnelApp(
                 status = status,
                 statusDetail = statusDetail,
-                remainingMillis = remainingTimeMillis,
-                onClaimReward = ::claimRewardHour,
                 error = errorMessage,
                 tampered = tamperDetected,
                 onDismissError = { errorMessage = null },
@@ -390,17 +363,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun claimRewardHour() {
-        remainingTimeMillis += 60L * 60L * 1000L
-        creditPrefs.edit().putLong("remaining_millis", remainingTimeMillis).apply()
-        Toast.makeText(this, "1 hour added to your time", Toast.LENGTH_SHORT).show()
-    }
-
     private fun connect(entry: ServerEntry) {
-        if (remainingTimeMillis <= 0L) {
-            Toast.makeText(this, "Time is over. Add 1 hour to connect.", Toast.LENGTH_LONG).show()
-            return
-        }
         // Locked servers must never expose their name, username, host, or protocol details in Logs.
         AppLogs.setServerDetailsVisible(this, visible = !entry.locked, clearWhenHidden = entry.locked)
         errorMessage = null
@@ -732,7 +695,6 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        mainHandler.removeCallbacks(creditTicker)
         mainHandler.removeCallbacks(updateProgressPoll)
         mainHandler.removeCallbacks(ovpnTimeout)
         clearRelayHooks()
