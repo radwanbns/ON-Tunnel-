@@ -1728,54 +1728,142 @@ private fun ServerCard(
     onDelete: () -> Unit
 ) {
     var menu by remember { mutableStateOf(false) }
+    val protocolIcon = when {
+        entry.isSsh -> Icons.Default.Terminal
+        entry.isOpenVpn -> Icons.Default.Security
+        else -> Icons.Default.Language
+    }
+
     Card(
         onClick = onSelect,
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = if (selected) SurfaceHigh else SurfaceC),
-        border = if (selected) BorderStroke(1.5.dp, Accent) else BorderStroke(0.dp, Color.Transparent),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) SurfaceHigh else SurfaceC
+        ),
+        border = BorderStroke(
+            width = if (selected) 1.5.dp else 1.dp,
+            color = if (selected) Accent else TextMuted.copy(alpha = 0.12f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 3.dp else 1.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            Modifier
+            modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(start = 13.dp, end = 7.dp, top = 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Radio indicator
             Box(
-                Modifier
-                    .size(22.dp)
-                    .clip(CircleShape)
-                    .background(if (selected) Accent else Color.Transparent)
-                    .then(
-                        if (!selected) Modifier.border(2.dp, TextMuted.copy(alpha = 0.45f), CircleShape)
-                        else Modifier
-                    ),
+                modifier = Modifier
+                    .size(43.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(if (selected) Accent.copy(alpha = 0.18f) else SurfaceHigh),
                 contentAlignment = Alignment.Center
             ) {
-                if (selected) {
-                    Box(Modifier.size(10.dp).clip(CircleShape).background(OnHero))
-                }
-            }
-            Spacer(Modifier.width(10.dp))
-            if (entry.locked) {
-                Icon(Icons.Default.Lock, "Locked", tint = TextMuted, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-            }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    entry.name,
-                    color = TextMain,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                Icon(
+                    protocolIcon,
+                    contentDescription = null,
+                    tint = if (selected) Accent else TextMuted,
+                    modifier = Modifier.size(22.dp)
                 )
             }
+
+            Spacer(Modifier.width(12.dp))
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        entry.name,
+                        color = TextMain,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (entry.locked) {
+                        Spacer(Modifier.width(6.dp))
+                        Icon(
+                            Icons.Default.Lock,
+                            contentDescription = "Locked server",
+                            tint = TextMuted,
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(7.dp))
+                            .background(Accent.copy(alpha = if (selected) 0.18f else 0.12f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            badge,
+                            color = Accent,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (entry.subscription) {
+                        Text(
+                            "OFFICIAL",
+                            color = TextMuted,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
+                    } else if (entry.locked) {
+                        Text(
+                            "LOCKED",
+                            color = TextMuted,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.width(6.dp))
+
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .size(27.dp)
+                        .clip(CircleShape)
+                        .background(Accent),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = "Selected server",
+                        tint = OnHero,
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+            }
+
             if (!entry.subscription) {
                 Box {
-                    IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.MoreVert, "Options", tint = TextMuted, modifier = Modifier.size(18.dp))
+                    IconButton(
+                        onClick = { menu = true },
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            contentDescription = "Server options",
+                            tint = TextMuted,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         if (!entry.locked) DropdownMenuItem(text = { Text("Edit") }, leadingIcon = { Icon(Icons.Default.Edit, null) }, onClick = { menu = false; onEdit() })
