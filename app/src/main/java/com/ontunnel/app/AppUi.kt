@@ -1774,7 +1774,7 @@ private fun ServerCard(
 
     Card(
         onClick = onSelect,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (selected) SurfaceHigh else SurfaceC
         ),
@@ -1788,13 +1788,13 @@ private fun ServerCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 13.dp, end = 7.dp, top = 12.dp, bottom = 12.dp),
+                .padding(start = 10.dp, end = 5.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(43.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .background(if (selected) Accent.copy(alpha = 0.18f) else SurfaceHigh),
                 contentAlignment = Alignment.Center
             ) {
@@ -1806,17 +1806,17 @@ private fun ServerCard(
                 )
             }
 
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(9.dp))
 
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         entry.name,
                         color = TextMain,
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -1851,15 +1851,7 @@ private fun ServerCard(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    if (entry.subscription) {
-                        Text(
-                            "OFFICIAL",
-                            color = TextMuted,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.5.sp
-                        )
-                    } else if (entry.locked) {
+                    if (entry.locked && !entry.subscription) {
                         Text(
                             "LOCKED",
                             color = TextMuted,
