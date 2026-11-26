@@ -298,7 +298,10 @@ internal fun ONTunnelApp(
                 // profiles and migrate them instead of keeping a second copy as manual.
                 val legacySubscription = servers.filter { old ->
                     !old.subscription && old.locked &&
-                        uniqueFresh.any { profileKey(it) == profileKey(old) }
+                        uniqueFresh.any { freshEntry ->
+                            profileKey(freshEntry) == profileKey(old) ||
+                                freshEntry.name.trim().equals(old.name.trim(), ignoreCase = true)
+                        }
                 }
                 val oldByProfile = (previousSubscription + legacySubscription)
                     .associateBy { profileKey(it) }
