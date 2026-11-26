@@ -1765,110 +1765,60 @@ private fun ServerCard(
     onDuplicate: () -> Unit,
     onDelete: () -> Unit
 ) {
-    var menu by remember { mutableStateOf(false) }
-    val protocolIcon = when {
-        entry.isSsh -> Icons.Default.Terminal
-        entry.isOpenVpn -> Icons.Default.Security
-        else -> Icons.Default.Language
-    }
-
     Card(
         onClick = onSelect,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (selected) SurfaceHigh else SurfaceC
         ),
         border = BorderStroke(
-            width = if (selected) 1.5.dp else 1.dp,
-            color = if (selected) Accent else TextMuted.copy(alpha = 0.12f)
+            width = if (selected) 1.dp else 0.7.dp,
+            color = if (selected) Accent else TextMuted.copy(alpha = 0.10f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 3.dp else 1.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 10.dp, end = 5.dp, top = 8.dp, bottom = 8.dp),
+                .heightIn(min = 40.dp)
+                .padding(horizontal = 9.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (selected) Accent.copy(alpha = 0.18f) else SurfaceHigh),
-                contentAlignment = Alignment.Center
-            ) {
+            Icon(
+                Icons.Default.Language,
+                contentDescription = "Server",
+                tint = if (selected) Accent else TextMuted,
+                modifier = Modifier.size(17.dp)
+            )
+
+            Spacer(Modifier.width(8.dp))
+
+            Text(
+                entry.name,
+                color = TextMain,
+                fontSize = 12.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+
+            if (entry.locked) {
+                Spacer(Modifier.width(5.dp))
                 Icon(
-                    protocolIcon,
-                    contentDescription = null,
-                    tint = if (selected) Accent else TextMuted,
-                    modifier = Modifier.size(22.dp)
+                    Icons.Default.Lock,
+                    contentDescription = "Locked server",
+                    tint = TextMuted,
+                    modifier = Modifier.size(12.dp)
                 )
             }
 
-            Spacer(Modifier.width(9.dp))
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        entry.name,
-                        color = TextMain,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    if (entry.locked) {
-                        Spacer(Modifier.width(6.dp))
-                        Icon(
-                            Icons.Default.Lock,
-                            contentDescription = "Locked server",
-                            tint = TextMuted,
-                            modifier = Modifier.size(13.dp)
-                        )
-                    }
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(7.dp))
-                            .background(Accent.copy(alpha = if (selected) 0.18f else 0.12f))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            badge,
-                            color = Accent,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    if (entry.locked && !entry.subscription) {
-                        Text(
-                            "LOCKED",
-                            color = TextMuted,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.5.sp
-                        )
-                    }
-                }
-            }
-
-            Spacer(Modifier.width(6.dp))
-
             if (selected) {
+                Spacer(Modifier.width(7.dp))
                 Box(
                     modifier = Modifier
-                        .size(27.dp)
+                        .size(19.dp)
                         .clip(CircleShape)
                         .background(Accent),
                     contentAlignment = Alignment.Center
@@ -1877,33 +1827,8 @@ private fun ServerCard(
                         Icons.Default.Check,
                         contentDescription = "Selected server",
                         tint = OnHero,
-                        modifier = Modifier.size(17.dp)
+                        modifier = Modifier.size(12.dp)
                     )
-                }
-            }
-
-            if (!entry.subscription) {
-                Box {
-                    IconButton(
-                        onClick = { menu = true },
-                        modifier = Modifier.size(34.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.MoreVert,
-                            contentDescription = "Server options",
-                            tint = TextMuted,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        if (!entry.locked) DropdownMenuItem(text = { Text("Edit") }, leadingIcon = { Icon(Icons.Default.Edit, null) }, onClick = { menu = false; onEdit() })
-                        if (!entry.locked) DropdownMenuItem(text = { Text("Share URI (locked)") }, leadingIcon = { Icon(Icons.Default.Lock, null) }, onClick = { menu = false; onShareUri(true) })
-                        if (!entry.locked) DropdownMenuItem(text = { Text("Share URI (unlocked)") }, leadingIcon = { Icon(Icons.Default.Share, null) }, onClick = { menu = false; onShareUri(false) })
-                        if (!entry.locked) DropdownMenuItem(text = { Text("Share JSON") }, leadingIcon = { Icon(Icons.Default.Code, null) }, onClick = { menu = false; onShareJson() })
-                        if (!entry.locked) DropdownMenuItem(text = { Text("Export server (.cot)") }, leadingIcon = { Icon(Icons.Default.FileDownload, null) }, onClick = { menu = false; onExportCot() })
-                        if (!entry.locked) DropdownMenuItem(text = { Text("Duplicate") }, leadingIcon = { Icon(Icons.Default.Add, null) }, onClick = { menu = false; onDuplicate() })
-                        DropdownMenuItem(text = { Text("Delete", color = RedErr) }, leadingIcon = { Icon(Icons.Default.Delete, null, tint = RedErr) }, onClick = { menu = false; onDelete() })
-                    }
                 }
             }
         }
