@@ -1501,6 +1501,44 @@ private fun MoreScreen(
             }
         }
         item {
+            SettingsCard(title = "Support ON Tunnel") {
+                Text(
+                    "If you enjoy using ON Tunnel, you can support its development with a voluntary donation through PayPal. Thank you for your support!",
+                    color = TextMuted,
+                    fontSize = 12.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            try {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse("https://paypal.me/radwanbenssaghir"))
+                                )
+                            } catch (_: Exception) {
+                                Toast.makeText(context, "Could not open PayPal", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        .padding(vertical = 12.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Favorite,
+                        contentDescription = "Donate",
+                        tint = Color(0xFF0070BA),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Donate with PayPal", color = TextMain, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Text("paypal.me/radwanbenssaghir", color = TextMuted, fontSize = 11.sp)
+                    }
+                    Icon(Icons.Default.OpenInNew, contentDescription = "Open PayPal", tint = TextMuted, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+        item {
             SettingsCard(title = "Version information") {
                 Text("ON Tunnel", color = TextMain, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                 Spacer(Modifier.height(4.dp))
