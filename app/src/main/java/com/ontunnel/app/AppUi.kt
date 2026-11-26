@@ -26,6 +26,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -1752,6 +1753,7 @@ private fun v2rayBadge(config: String): String = try {
     "V2Ray"
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ServerCard(
     entry: ServerEntry,
@@ -1765,71 +1767,126 @@ private fun ServerCard(
     onDuplicate: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Card(
-        onClick = onSelect,
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected) SurfaceHigh else SurfaceC
-        ),
-        border = BorderStroke(
-            width = if (selected) 1.dp else 0.7.dp,
-            color = if (selected) Accent else TextMuted.copy(alpha = 0.10f)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier.fillMaxWidth()
+    var actionsOpen by remember(entry.id) { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = onSelect,
+                onLongClick = {
+                    // Subscription servers are intentionally not manageable by users.
+                    if (!entry.subscription) actionsOpen = true
+                }
+            )
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 40.dp)
-                .padding(horizontal = 9.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (selected) SurfaceHigh else SurfaceC
+            ),
+            border = BorderStroke(
+                width = if (selected) 1.dp else 0.7.dp,
+                color = if (selected) Accent else TextMuted.copy(alpha = 0.10f)
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Icon(
-                Icons.Default.Language,
-                contentDescription = "Server",
-                tint = if (selected) Accent else TextMuted,
-                modifier = Modifier.size(17.dp)
-            )
-
-            Spacer(Modifier.width(8.dp))
-
-            Text(
-                entry.name,
-                color = TextMain,
-                fontSize = 12.sp,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-
-            if (entry.locked) {
-                Spacer(Modifier.width(5.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 40.dp)
+                    .padding(horizontal = 9.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Icon(
-                    Icons.Default.Lock,
-                    contentDescription = "Locked server",
-                    tint = TextMuted,
-                    modifier = Modifier.size(12.dp)
+                    Icons.Default.Language,
+                    contentDescription = "Server",
+                    tint = if (selected) Accent else TextMuted,
+                    modifier = Modifier.size(17.dp)
                 )
-            }
 
-            if (selected) {
-                Spacer(Modifier.width(7.dp))
-                Box(
-                    modifier = Modifier
-                        .size(19.dp)
-                        .clip(CircleShape)
-                        .background(Accent),
-                    contentAlignment = Alignment.Center
-                ) {
+                Spacer(Modifier.width(8.dp))
+
+                Text(
+                    entry.name,
+                    color = TextMain,
+                    fontSize = 12.sp,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+
+                if (entry.locked) {
+                    Spacer(Modifier.width(5.dp))
                     Icon(
-                        Icons.Default.Check,
-                        contentDescription = "Selected server",
-                        tint = OnHero,
+                        Icons.Default.Lock,
+                        contentDescription = "Locked server",
+                        tint = TextMuted,
                         modifier = Modifier.size(12.dp)
                     )
                 }
+
+                if (selected) {
+                    Spacer(Modifier.width(7.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(19.dp)
+                            .clip(CircleShape)
+                            .background(Accent),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = "Selected server",
+                            tint = OnHero,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        DropdownMenu(
+            expanded = actionsOpen,
+            onDismissRequest = { actionsOpen = false }
+        ) {
+            if (!entry.locked && !entry.subscription) {
+                DropdownMenuItem(
+                    text = { Text("Edit server") },
+                    leadingIcon = { Icon(Icons.Default.Edit, null) },
+                    onClick = { actionsOpen = false; onEdit() }
+                )
+            }
+            DropdownMenuItem(
+                text = { Text("Copy server URI") },
+                leadingIcon = { Icon(Icons.Default.Link, null) },
+                onClick = { actionsOpen = false; onShareUri(entry.locked) }
+            )
+            DropdownMenuItem(
+                text = { Text("Copy server JSON") },
+                leadingIcon = { Icon(Icons.Default.ContentCopy, null) },
+                onClick = { actionsOpen = false; onShareJson() }
+            )
+            if (!entry.locked && !entry.subscription) {
+                DropdownMenuItem(
+                    text = { Text("Export server (.cot)") },
+                    leadingIcon = { Icon(Icons.Default.FileDownload, null) },
+                    onClick = { actionsOpen = false; onExportCot() }
+                )
+            }
+            if (!entry.subscription) {
+                DropdownMenuItem(
+                    text = { Text("Duplicate server") },
+                    leadingIcon = { Icon(Icons.Default.ContentCopy, null) },
+                    onClick = { actionsOpen = false; onDuplicate() }
+                )
+                DropdownMenuItem(
+                    text = { Text("Delete server") },
+                    leadingIcon = { Icon(Icons.Default.Delete, null, tint = RedErr) },
+                    onClick = { actionsOpen = false; onDelete() }
+                )
             }
         }
     }
