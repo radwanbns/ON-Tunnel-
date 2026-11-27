@@ -128,13 +128,35 @@ object SubscriptionSync {
             onSuccess = { fresh ->
                 val store = ServerStore(context)
                 val current = store.load()
-                val oldLocked = current.filter { it.locked }.associateBy { it.name }
-                val manual = current.filter { !it.locked }
-                val newLocked = fresh.distinctBy { it.name }.map { e ->
-                    oldLocked[e.name]?.let { e.copy(id = it.id) } ?: e
+                // Only replace built-in subscription entries. Locally imported locked
+                // servers must remain untouched, and SSH/OpenVPN subscription entries
+                // must not be dropped by the background worker.
+                fun profileKey(e: ServerEntry) = "${e.type}|${e.config.trim()}"
+                val uniqueFresh = fresh.distinctBy { profileKey(it) }
+                val oldSubscription = current.filter { it.subscription }
+                val legacySubscription = current.filter { old ->
+                    !old.subscription && old.locked && uniqueFresh.any { freshEntry ->
+                        profileKey(freshEntry) == profileKey(old) ||
+                            freshEntry.name.trim().equals(old.name.trim(), ignoreCase = true)
+                    }
                 }
-                val added = newLocked.count { it.name !in oldLocked }
-                val merged = newLocked + manual
+                val oldByProfile = (oldSubscription + legacySubscription)
+                    .associateBy { profileKey(it) }
+                val oldByName = (oldSubscription + legacySubscription)
+                    .associateBy { it.name.trim().lowercase() }
+                val newLocked = uniqueFresh.map { entry ->
+                    val previous = oldByProfile[profileKey(entry)]
+                        ?: oldByName[entry.name.trim().lowercase()]
+                    (if (previous != null) entry.copy(id = previous.id) else entry)
+                        .copy(locked = true, subscription = true)
+                }
+                val added = newLocked.count { entry ->
+                    profileKey(entry) !in oldByProfile &&
+                        entry.name.trim().lowercase() !in oldByName
+                }
+                // Keep every non-subscription server, including user-imported locked files.
+                val preserved = current.filter { !it.subscription && it !in legacySubscription }
+                val merged = newLocked + preserved
                 store.save(merged)
                 if (merged.none { it.id == store.selectedId }) {
                     store.selectedId = merged.firstOrNull()?.id.orEmpty()
@@ -173,8 +195,27 @@ object SubscriptionSync {
         val errors = mutableListOf<String>()
         for (line in lines) {
             try {
-                val parsed = V2RayConfigParser.parse(line)
-                entries += ServerEntry(name = parsed.name, config = parsed.config, uri = "", locked = true)
+                if (
+                    line.startsWith("ontunnel://server/", ignoreCase = true) ||
+                    line.startsWith("ovpn://", ignoreCase = true) ||
+                    line.startsWith("ssh://", ignoreCase = true) ||
+                    line.startsWith("v2ray://", ignoreCase = true)
+                ) {
+                    // Use the same protocol-aware importer as the foreground updater.
+                    entries += ServerTransfer.importText(line).map {
+                        it.copy(locked = true, subscription = true)
+                    }
+                } else {
+                    // Standard VLESS / VMess / Trojan subscription links.
+                    val parsed = V2RayConfigParser.parse(line)
+                    entries += ServerEntry(
+                        name = parsed.name,
+                        config = parsed.config,
+                        uri = parsed.uri,
+                        locked = true,
+                        subscription = true
+                    )
+                }
             } catch (e: Exception) {
                 errors += (e.message ?: "parse error")
             }
