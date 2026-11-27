@@ -1795,23 +1795,23 @@ private fun ServerCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 40.dp)
-                    .padding(horizontal = 9.dp, vertical = 5.dp),
+                    .height(40.dp)
+                    .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     Icons.Default.Language,
                     contentDescription = "Server",
                     tint = if (selected) Accent else TextMuted,
-                    modifier = Modifier.size(17.dp)
+                    modifier = Modifier.size(19.dp)
                 )
 
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(9.dp))
 
                 Text(
                     entry.name,
                     color = TextMain,
-                    fontSize = 12.sp,
+                    fontSize = 14.sp,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1824,7 +1824,7 @@ private fun ServerCard(
                         Icons.Default.Lock,
                         contentDescription = "Locked server",
                         tint = TextMuted,
-                        modifier = Modifier.size(12.dp)
+                        modifier = Modifier.size(15.dp)
                     )
                 }
 
@@ -1832,7 +1832,7 @@ private fun ServerCard(
                     Spacer(Modifier.width(7.dp))
                     Box(
                         modifier = Modifier
-                            .size(19.dp)
+                            .size(20.dp)
                             .clip(CircleShape)
                             .background(Accent),
                         contentAlignment = Alignment.Center
